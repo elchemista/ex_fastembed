@@ -35,6 +35,22 @@ jobs:
           # Get the project version from mix.exs
           echo "PROJECT_VERSION=$(sed -n 's/^  @version "\(.*\)"/\1/p' mix.exs | head -n1)" >> $GITHUB_ENV
 
+      - name: Setup OpenSSL for Linux
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libssl-dev
+          echo "OPENSSL_DIR=/usr" >> $GITHUB_ENV
+
+      - name: Setup OpenSSL for macOS
+        if: runner.os == 'macOS'
+        run: |
+          brew install openssl
+          echo "OPENSSL_DIR=$(brew --prefix openssl)" >> $GITHUB_ENV
+
+      # For Windows, ensure that OpenSSL is installed and OPENSSL_DIR is set.
+      # You may add a similar step or configure the runner with the correct environment variable.
+
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:

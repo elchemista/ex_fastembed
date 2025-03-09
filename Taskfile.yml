@@ -9,6 +9,7 @@ tasks:
     desc: Compile sources (with Rust)
     env:
       RUSTLER_PRECOMPILATION_EXAMPLE_BUILD: 1
+      OPENSSL_DIR: /usr 
     cmds:
       - mix compile
 

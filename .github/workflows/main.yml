@@ -17,13 +17,13 @@ jobs:
           - { target: arm-unknown-linux-gnueabihf , os: ubuntu-20.04 , use-cross: true }
           - { target: aarch64-unknown-linux-gnu   , os: ubuntu-20.04 , use-cross: true }
           - { target: aarch64-unknown-linux-musl  , os: ubuntu-20.04 , use-cross: true }
-          - { target: aarch64-apple-darwin        , os: macos-14      }
+          - { target: aarch64-apple-darwin        , os: macos-14     }
           - { target: riscv64gc-unknown-linux-gnu , os: ubuntu-20.04 , use-cross: true }
-          - { target: x86_64-apple-darwin         , os: macos-14      }
-          - { target: x86_64-unknown-linux-gnu    , os: ubuntu-20.04  }
+          - { target: x86_64-apple-darwin         , os: macos-14     }
+          - { target: x86_64-unknown-linux-gnu    , os: ubuntu-20.04 }
           - { target: x86_64-unknown-linux-musl   , os: ubuntu-20.04 , use-cross: true }
-          # - { target: x86_64-pc-windows-gnu       , os: windows-2019  }
-          # - { target: x86_64-pc-windows-msvc      , os: windows-2019  }
+          # - { target: x86_64-pc-windows-gnu       , os: windows-2019 }
+          # - { target: x86_64-pc-windows-msvc      , os: windows-2019 }
 
     steps:
       - name: Checkout source code
@@ -33,42 +33,52 @@ jobs:
         shell: bash
         run: |
           # Get the project version from mix.exs
-          echo "PROJECT_VERSION=$(sed -n 's/^  @version "\(.*\)"/\1/p' mix.exs | head -n1)" >> $GITHUB_ENV
+          echo "PROJECT_VERSION=$(sed -n 's/^  @version \"\\(.*\\)\"/\\1/p' mix.exs | head -n1)" >> $GITHUB_ENV
 
-      - name: Setup OpenSSL for Linux (cross-compilation aware)
+      - name: Setup environment for cross-compilation (Linux)
         if: runner.os == 'Linux'
         run: |
+          set -eux
           sudo apt-get update
-          # Check the target to install the right architecture
+
+          # Install pkg-config so cross can locate .pc files
+          sudo apt-get install -y pkg-config
+
           case "${{ matrix.job.target }}" in
+
             "arm-unknown-linux-gnueabihf")
               sudo dpkg --add-architecture armhf
               sudo apt-get update
-              sudo apt-get install -y libssl-dev:armhf pkg-config
+              sudo apt-get install -y libssl-dev:armhf
               echo "PKG_CONFIG_PATH=/usr/lib/arm-linux-gnueabihf/pkgconfig:$PKG_CONFIG_PATH" >> $GITHUB_ENV
               echo "OPENSSL_DIR=/usr" >> $GITHUB_ENV
               ;;
-            *"aarch64-unknown-linux"* )
+
+            *"aarch64-unknown-linux"*)
               # Covers aarch64-unknown-linux-gnu and aarch64-unknown-linux-musl
               sudo dpkg --add-architecture arm64
               sudo apt-get update
-              sudo apt-get install -y libssl-dev:arm64 pkg-config
+              sudo apt-get install -y libssl-dev:arm64
               echo "PKG_CONFIG_PATH=/usr/lib/aarch64-linux-gnu/pkgconfig:$PKG_CONFIG_PATH" >> $GITHUB_ENV
               echo "OPENSSL_DIR=/usr" >> $GITHUB_ENV
               ;;
+
             "riscv64gc-unknown-linux-gnu")
-              # There may be limited or no official riscv64 cross packages in Ubuntu 20.04
-              # The below might work if you have a cross toolchain installed.
-              sudo apt-get install -y libssl-dev pkg-config
+              # Official riscv64 cross-compiled openssl packages may not exist in Ubuntu 20.04.
+              # This attempts to install the default libssl-dev, but might fail or be insufficient.
+              sudo apt-get install -y libssl-dev
+              # If cross-compiling is configured, you may need a riscv64 library path.
               echo "PKG_CONFIG_PATH=/usr/lib/riscv64-linux-gnu/pkgconfig:$PKG_CONFIG_PATH" >> $GITHUB_ENV
               echo "OPENSSL_DIR=/usr" >> $GITHUB_ENV
               ;;
-            "x86_64-unknown-linux-gnu" | "x86_64-unknown-linux-musl")
-              sudo apt-get install -y libssl-dev pkg-config
+
+            "x86_64-unknown-linux-gnu"|"x86_64-unknown-linux-musl")
+              sudo apt-get install -y libssl-dev
               echo "OPENSSL_DIR=/usr" >> $GITHUB_ENV
               ;;
+
             *)
-              echo "No special OpenSSL handling for target: ${{ matrix.job.target }}"
+              echo "No special handling for target: ${{ matrix.job.target }}"
               ;;
           esac
 
@@ -78,7 +88,7 @@ jobs:
           brew install openssl
           echo "OPENSSL_DIR=$(brew --prefix openssl)" >> $GITHUB_ENV
 
-      # Example (Chocolatey):
+    
       # - name: Setup OpenSSL for Windows
       #   if: runner.os == 'Windows'
       #   run: |

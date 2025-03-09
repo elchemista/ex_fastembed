@@ -22,8 +22,8 @@ jobs:
           - { target: x86_64-apple-darwin         , os: macos-14      }
           - { target: x86_64-unknown-linux-gnu    , os: ubuntu-20.04  }
           - { target: x86_64-unknown-linux-musl   , os: ubuntu-20.04 , use-cross: true }
-          - { target: x86_64-pc-windows-gnu       , os: windows-2019  }
-          - { target: x86_64-pc-windows-msvc      , os: windows-2019  }
+          # - { target: x86_64-pc-windows-gnu       , os: windows-2019  }
+          # - { target: x86_64-pc-windows-msvc      , os: windows-2019  }
 
     steps:
       - name: Checkout source code
@@ -35,12 +35,42 @@ jobs:
           # Get the project version from mix.exs
           echo "PROJECT_VERSION=$(sed -n 's/^  @version "\(.*\)"/\1/p' mix.exs | head -n1)" >> $GITHUB_ENV
 
-      - name: Setup OpenSSL for Linux
+      - name: Setup OpenSSL for Linux (cross-compilation aware)
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libssl-dev
-          echo "OPENSSL_DIR=/usr" >> $GITHUB_ENV
+          # Check the target to install the right architecture
+          case "${{ matrix.job.target }}" in
+            "arm-unknown-linux-gnueabihf")
+              sudo dpkg --add-architecture armhf
+              sudo apt-get update
+              sudo apt-get install -y libssl-dev:armhf pkg-config
+              echo "PKG_CONFIG_PATH=/usr/lib/arm-linux-gnueabihf/pkgconfig:$PKG_CONFIG_PATH" >> $GITHUB_ENV
+              echo "OPENSSL_DIR=/usr" >> $GITHUB_ENV
+              ;;
+            *"aarch64-unknown-linux"* )
+              # Covers aarch64-unknown-linux-gnu and aarch64-unknown-linux-musl
+              sudo dpkg --add-architecture arm64
+              sudo apt-get update
+              sudo apt-get install -y libssl-dev:arm64 pkg-config
+              echo "PKG_CONFIG_PATH=/usr/lib/aarch64-linux-gnu/pkgconfig:$PKG_CONFIG_PATH" >> $GITHUB_ENV
+              echo "OPENSSL_DIR=/usr" >> $GITHUB_ENV
+              ;;
+            "riscv64gc-unknown-linux-gnu")
+              # There may be limited or no official riscv64 cross packages in Ubuntu 20.04
+              # The below might work if you have a cross toolchain installed.
+              sudo apt-get install -y libssl-dev pkg-config
+              echo "PKG_CONFIG_PATH=/usr/lib/riscv64-linux-gnu/pkgconfig:$PKG_CONFIG_PATH" >> $GITHUB_ENV
+              echo "OPENSSL_DIR=/usr" >> $GITHUB_ENV
+              ;;
+            "x86_64-unknown-linux-gnu" | "x86_64-unknown-linux-musl")
+              sudo apt-get install -y libssl-dev pkg-config
+              echo "OPENSSL_DIR=/usr" >> $GITHUB_ENV
+              ;;
+            *)
+              echo "No special OpenSSL handling for target: ${{ matrix.job.target }}"
+              ;;
+          esac
 
       - name: Setup OpenSSL for macOS
         if: runner.os == 'macOS'
@@ -48,8 +78,12 @@ jobs:
           brew install openssl
           echo "OPENSSL_DIR=$(brew --prefix openssl)" >> $GITHUB_ENV
 
-      # For Windows, ensure that OpenSSL is installed and OPENSSL_DIR is set.
-      # You may add a similar step or configure the runner with the correct environment variable.
+      # Example (Chocolatey):
+      # - name: Setup OpenSSL for Windows
+      #   if: runner.os == 'Windows'
+      #   run: |
+      #     choco install openssl
+      #     echo "OPENSSL_DIR=C:\\Program Files\\OpenSSL-Win64" >> $GITHUB_ENV
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable

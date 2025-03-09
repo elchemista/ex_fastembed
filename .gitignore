@@ -9,7 +9,7 @@ erl_crash.dump
 /config/*.secret.exs
 .elixir_ls/
 .fastembed_cache/
-
+/config/
 # Rust binary artifacts
 /target/
 

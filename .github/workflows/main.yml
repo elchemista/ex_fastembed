@@ -4,53 +4,46 @@ on:
   push:
     tags:
       - 'v*'
-  # pull_request:  # optional
 
 permissions:
   contents: write
-  # ↑ Allows softprops/action-gh-release to attach release assets
 
 jobs:
   build_release:
+    name: NIF ${{ matrix.nif }} - ${{ matrix.job.target }} (${{ matrix.job.os }})
     runs-on: ${{ matrix.job.os }}
-    name: Build Rust NIF (NIF ${{ matrix.nif }}, ${{ matrix.job.target }}, ${{ matrix.job.os }}, ${{ matrix.job.use-cross }})
     strategy:
       fail-fast: false
       matrix:
         nif: ["2.16", "2.15"]
         job:
-          - { target: x86_64-unknown-linux-gnu, os: ubuntu-20.04, use-cross: false }
-          
-          - { target: arm-unknown-linux-gnueabihf,   os: ubuntu-20.04, use-cross: true }
-          - { target: aarch64-unknown-linux-gnu,     os: ubuntu-20.04, use-cross: true }
-          - { target: aarch64-unknown-linux-musl,    os: ubuntu-20.04, use-cross: true }
-          - { target: x86_64-unknown-linux-musl,     os: ubuntu-20.04, use-cross: true }
-          - { target: aarch64-apple-darwin,          os: macos-14,     use-cross: false }
-          - { target: x86_64-apple-darwin,           os: macos-14,     use-cross: false }
+          - { target: arm-unknown-linux-gnueabihf , os: ubuntu-20.04 , use-cross: true }
+          - { target: aarch64-unknown-linux-gnu   , os: ubuntu-20.04 , use-cross: true }
+          - { target: aarch64-unknown-linux-musl  , os: ubuntu-20.04 , use-cross: true }
+          - { target: aarch64-apple-darwin        , os: macos-14     , use-cross: false }
+          - { target: riscv64gc-unknown-linux-gnu , os: ubuntu-20.04 , use-cross: true }
+          - { target: x86_64-apple-darwin         , os: macos-14     , use-cross: false }
+          - { target: x86_64-unknown-linux-gnu    , os: ubuntu-20.04 , use-cross: false }
+          - { target: x86_64-unknown-linux-musl   , os: ubuntu-20.04 , use-cross: true }
+
 
     steps:
-      - name: Checkout
+      - name: Checkout source code
         uses: actions/checkout@v3
 
-      - name: Install system deps (Ubuntu)
+      - name: System deps (Ubuntu)
         if: matrix.job.os == 'ubuntu-20.04'
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             build-essential \
-            pkg-config \
-            libssl-dev \
-            gcc-arm-linux-gnueabihf \
-            gcc-multilib \
-            musl-dev \
-            musl-tools
+            pkg-config
 
-      - name: Install GNU tar (macOS)
+      - name: System deps (macOS)
         if: matrix.job.os == 'macos-14'
         run: |
           brew update
-          brew install gnu-tar pkg-config openssl@1.1
-          sudo ln -sf "$(which gtar)" /usr/local/bin/tar
+          brew install pkg-config openssl@1.1
 
       - name: Extract project version
         shell: bash
@@ -63,13 +56,12 @@ jobs:
           toolchain: stable
           target: ${{ matrix.job.target }}
 
-      # -------------------------------
-      # The build step
-      # For cross targets, we set OPENSSL_VENDORED=1 to avoid system OpenSSL
-      # -------------------------------
       - name: Build the project
         id: build-crate
         uses: philss/rustler-precompiled-action@v1.0.1
+        env:
+          # If use-cross is true, we set OPENSSL_VENDORED=1 so that
+          OPENSSL_VENDORED: ${{ (matrix.job.use-cross == 'true') && '1' || '' }}
         with:
           project-name: ex_fastembed
           project-version: ${{ env.PROJECT_VERSION }}
@@ -77,19 +69,14 @@ jobs:
           nif-version: ${{ matrix.nif }}
           use-cross: ${{ matrix.job.use-cross }}
           project-dir: "native/ex_fastembed"
-        env:
-          # Only vendored if using cross
-          # The easiest approach is to set it for all cross jobs,
-          # it won't affect the builds that are already passing
-          OPENSSL_VENDORED: ${{ (matrix.job.use-cross == 'true') && '1' || '' }}
 
-      - name: Upload artifact
+      - name: Artifact upload
         uses: actions/upload-artifact@v4
         with:
           name: ${{ steps.build-crate.outputs.file-name }}
           path: ${{ steps.build-crate.outputs.file-path }}
 
-      - name: Publish archives
+      - name: Publish archives and packages
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v1
         with:

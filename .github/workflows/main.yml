@@ -4,37 +4,35 @@ on:
   push:
     tags:
       - 'v*'
-  # optionally also:
-  # pull_request:
+  # pull_request:  # optional
 
 permissions:
   contents: write
-  # ↑ Important so we can upload releases with softprops/action-gh-release
+  # ↑ Allows softprops/action-gh-release to attach release assets
 
 jobs:
   build_release:
-    name: "Build Rust NIF"
     runs-on: ${{ matrix.job.os }}
+    name: Build Rust NIF (NIF ${{ matrix.nif }}, ${{ matrix.job.target }}, ${{ matrix.job.os }}, ${{ matrix.job.use-cross }})
     strategy:
       fail-fast: false
       matrix:
-        # List all supported NIF versions
         nif: ["2.16", "2.15"]
-        # Our build matrix (target + OS + "use-cross" bool)
         job:
-          - { target: arm-unknown-linux-gnueabihf, os: ubuntu-20.04, use-cross: true }
-          - { target: aarch64-unknown-linux-gnu,   os: ubuntu-20.04, use-cross: true }
-          - { target: aarch64-unknown-linux-musl,  os: ubuntu-20.04, use-cross: true }
-          - { target: aarch64-apple-darwin,        os: macos-14,     use-cross: false }
-          - { target: x86_64-apple-darwin,         os: macos-14,     use-cross: false }
-          - { target: x86_64-unknown-linux-gnu,    os: ubuntu-20.04, use-cross: false }
-          - { target: x86_64-unknown-linux-musl,   os: ubuntu-20.04, use-cross: true }
+          - { target: x86_64-unknown-linux-gnu, os: ubuntu-20.04, use-cross: false }
+          
+          - { target: arm-unknown-linux-gnueabihf,   os: ubuntu-20.04, use-cross: true }
+          - { target: aarch64-unknown-linux-gnu,     os: ubuntu-20.04, use-cross: true }
+          - { target: aarch64-unknown-linux-musl,    os: ubuntu-20.04, use-cross: true }
+          - { target: x86_64-unknown-linux-musl,     os: ubuntu-20.04, use-cross: true }
+          - { target: aarch64-apple-darwin,          os: macos-14,     use-cross: false }
+          - { target: x86_64-apple-darwin,           os: macos-14,     use-cross: false }
 
     steps:
-      - name: Checkout source code
+      - name: Checkout
         uses: actions/checkout@v3
 
-      - name: Install system dependencies (Ubuntu)
+      - name: Install system deps (Ubuntu)
         if: matrix.job.os == 'ubuntu-20.04'
         run: |
           sudo apt-get update
@@ -43,15 +41,16 @@ jobs:
             pkg-config \
             libssl-dev \
             gcc-arm-linux-gnueabihf \
+            gcc-multilib \
             musl-dev \
             musl-tools
 
-      - name: Install system dependencies (macOS)
+      - name: Install GNU tar (macOS)
         if: matrix.job.os == 'macos-14'
         run: |
           brew update
-          brew install pkg-config openssl@1.1
-          echo "/usr/local/opt/openssl@1.1/lib/pkgconfig" >> $GITHUB_PATH
+          brew install gnu-tar pkg-config openssl@1.1
+          sudo ln -sf "$(which gtar)" /usr/local/bin/tar
 
       - name: Extract project version
         shell: bash
@@ -64,6 +63,10 @@ jobs:
           toolchain: stable
           target: ${{ matrix.job.target }}
 
+      # -------------------------------
+      # The build step
+      # For cross targets, we set OPENSSL_VENDORED=1 to avoid system OpenSSL
+      # -------------------------------
       - name: Build the project
         id: build-crate
         uses: philss/rustler-precompiled-action@v1.0.1
@@ -74,6 +77,11 @@ jobs:
           nif-version: ${{ matrix.nif }}
           use-cross: ${{ matrix.job.use-cross }}
           project-dir: "native/ex_fastembed"
+        env:
+          # Only vendored if using cross
+          # The easiest approach is to set it for all cross jobs,
+          # it won't affect the builds that are already passing
+          OPENSSL_VENDORED: ${{ (matrix.job.use-cross == 'true') && '1' || '' }}
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -81,7 +89,7 @@ jobs:
           name: ${{ steps.build-crate.outputs.file-name }}
           path: ${{ steps.build-crate.outputs.file-path }}
 
-      - name: Publish archives and packages
+      - name: Publish archives
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v1
         with:

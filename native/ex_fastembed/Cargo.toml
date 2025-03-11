@@ -13,6 +13,10 @@ crate-type = ["cdylib"]
 fastembed = "4.6.0"
 rustler = "0.36.1"
 
+[dependencies.openssl-sys]
+version = "0.9"
+features = ["vendored"]
+
 [profile.release]
 codegen-units = 1
 lto = true

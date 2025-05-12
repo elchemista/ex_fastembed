@@ -9,7 +9,7 @@ Add `ex_fastembed` to your list of dependencies in `mix.exs`:
 ```elixir
 def deps do
   [
-    {:ex_fastembed, "~> 0.1.0"}
+    {:ex_fastembed, github: "elchemista/ex_fastembed", branch: "master"}
   ]
 end
 ```

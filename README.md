@@ -14,10 +14,13 @@ def deps do
 end
 ```
 
-Then run:
+How to compile:
+
+* Install clang (e.g., `sudo apt install clang`)
+* Install Rust (e.g., `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`)
 
 ```bash
-mix deps.get
+export CC=/usr/bin/clang CXX=/usr/bin/clang++ RUSTLER_PRECOMPILATION_EXAMPLE_BUILD=1 && mix compile
 ```
 
 ## Usage

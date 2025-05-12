@@ -4,6 +4,8 @@
 /doc
 /.fetch
 erl_crash.dump
+/native/ex_fastembed/target/
+/priv/native
 *.ez
 *.beam
 /config/*.secret.exs

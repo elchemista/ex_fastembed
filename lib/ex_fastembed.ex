@@ -21,14 +21,18 @@ defmodule ExFastembed do
       iex> ExFastembed.rerank("search query", ["doc1", "doc2"], true)
       {:ok, [{0, 0.95, "doc1"}, {1, 0.90, "doc2"}]}
   """
-  version = Mix.Project.config()[:version]
-
-  use RustlerPrecompiled,
+ use Rustler,
     otp_app: :ex_fastembed,
-    crate: "ex_fastembed",
-    base_url: "https://github.com/elchemista/ex_fastembed/releases/download/v#{version}/",
-    force_build: System.get_env("RUSTLER_PRECOMPILATION_EXAMPLE_BUILD") in ["1", "true"],
-    version: version
+    crate:  "ex_fastembed"
+
+#  version = Mix.Project.config()[:version]
+
+#  use RustlerPrecompiled,
+#    otp_app: :ex_fastembed,
+#    crate: "ex_fastembed",
+#    base_url: "https://github.com/elchemista/ex_fastembed/releases/download/v#{version}/",
+#    force_build: System.get_env("RUSTLER_PRECOMPILATION_EXAMPLE_BUILD") in ["1", "true"],
+#    version: version
 
   @valid_models [
     "BAAI/bge-small-en-v1.5",

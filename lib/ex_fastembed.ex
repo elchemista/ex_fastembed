@@ -1,121 +1,63 @@
 defmodule ExFastembed do
   @moduledoc """
-  ExFastembed provides functions to load text embedding and reranker models,
-  generate embeddings for lists of texts, and rerank documents given a query.
+  Loads FastEmbed text embedding and reranker models through `fastembed-rs`.
 
-  ## Example Usage
-
-      # Load an embedding model
-      iex> ExFastembed.load("BAAI/bge-small-en-v1.5")
-      {:ok, 768}  # assuming the model returns embeddings of dimension 768
-
-      # Embed a list of texts
-      iex> ExFastembed.embed_text(["Hello", "World"])
-      {:ok, [[0.1, 0.2, ...], [0.3, 0.4, ...]]}
-
-      # Load a reranker model
-      iex> ExFastembed.load_reranker("BAAI/bge-reranker-base")
-      {:ok, true}
-
-      # Rerank documents for a given query
-      iex> ExFastembed.rerank("search query", ["doc1", "doc2"], true)
-      {:ok, [{0, 0.95, "doc1"}, {1, 0.90, "doc2"}]}
+  The public API validates Elixir input before delegating to the native Rustler
+  module. Model names are resolved by the native layer so the supported model
+  lists stay aligned with the bundled `fastembed` crate.
   """
-  use Rustler,
-    otp_app: :ex_fastembed,
-    crate: "ex_fastembed"
 
-  #  version = Mix.Project.config()[:version]
+  alias ExFastembed.Native
 
-  #  use RustlerPrecompiled,
-  #    otp_app: :ex_fastembed,
-  #    crate: "ex_fastembed",
-  #    base_url: "https://github.com/elchemista/ex_fastembed/releases/download/v#{version}/",
-  #    force_build: System.get_env("RUSTLER_PRECOMPILATION_EXAMPLE_BUILD") in ["1", "true"],
-  #    version: version
-
-  @valid_models [
-    "BAAI/bge-small-en-v1.5",
-    "sentence-transformers/all-MiniLM-L6-v2",
-    "sentence-transformers/all-MiniLM-L12-v2",
-    "mixedbread-ai/mxbai-embed-large-v1",
-    "Qdrant/clip-ViT-B-32-text",
-    "BAAI/bge-large-en-v1.5",
-    "BAAI/bge-small-zh-v1.5",
-    "BAAI/bge-base-en-v1.5",
-    "sentence-transformers/paraphrase-MiniLM-L12-v2",
-    "sentence-transformers/paraphrase-multilingual-mpnet-base-v2",
-    "lightonai/ModernBERT-embed-large",
-    "nomic-ai/nomic-embed-text-v1",
-    "nomic-ai/nomic-embed-text-v1.5",
-    "intfloat/multilingual-e5-small",
-    "intfloat/multilingual-e5-base",
-    "intfloat/multilingual-e5-large",
-    "Alibaba-NLP/gte-base-en-v1.5",
-    "Alibaba-NLP/gte-large-en-v1.5"
-  ]
-
-  @reranker_models [
-    "BAAI/bge-reranker-base",
-    "BAAI/bge-reranker-v2-m3",
-    "jinaai/jina-reranker-v1-turbo-en",
-    "jinaai/jina-reranker-v2-base-multiligual"
-  ]
-
-  @spec embed_models() :: [<<_::64, _::_*8>>, ...]
-  @doc """
-  Returns the list of valid text embedding models.
-  """
-  def embed_models, do: @valid_models
-
-  @spec reranker_models() :: [<<_::64, _::_*8>>, ...]
-  @doc """
-  Returns the list of valid reranker models.
-  """
-  def reranker_models, do: @reranker_models
+  @type embedding :: [float()]
+  @type rerank_result :: {non_neg_integer(), float(), String.t() | nil}
+  @type error :: {:error, String.t()}
 
   @doc """
-  Loads the chosen text embedding model.
+  Returns text embedding model names accepted by `load/1`.
+  """
+  @spec embed_models() :: [String.t()]
+  def embed_models, do: Native.embed_models()
+
+  @doc """
+  Returns reranker model names accepted by `load_reranker/1`.
+  """
+  @spec reranker_models() :: [String.t()]
+  def reranker_models, do: Native.reranker_models()
+
+  @doc """
+  Loads a text embedding model and returns its embedding dimension.
 
   ## Examples
 
       iex> ExFastembed.load("BAAI/bge-small-en-v1.5")
-      {:ok, 768}
+      {:ok, 384}
 
       iex> ExFastembed.load("invalid-model")
       {:error, "Model not recognized or not implemented: invalid-model"}
-
   """
-  @spec load(String.t()) :: {:ok, integer()} | {:error, String.t()}
-  def load(model_name) when is_bitstring(model_name) and model_name in @valid_models do
-    :erlang.nif_error("NIF load/1 not loaded")
-  end
+  @spec load(String.t()) :: {:ok, pos_integer()} | error()
+  def load(model_name) when is_binary(model_name), do: Native.load(model_name)
 
   def load(model_name),
-    do: {:error, "Model not recognized or not implemented: #{model_name}"}
+    do: {:error, "Model not recognized or not implemented: #{inspect(model_name)}"}
 
   @doc """
-  Returns a list of embeddings for each text in the given list.
+  Embeds a list of strings with the loaded text embedding model.
 
-  ## Examples
-
-      iex> ExFastembed.embed_text(["Hello", "World"])
-      {:ok, [[0.1, 0.2, ...], [0.3, 0.4, ...]]}
-
-      iex> ExFastembed.embed_text("Hello")
-      {:error, "Invalid input, expected a list of strings"}
-
+  Call `load/1` before calling this function.
   """
-  @spec embed_text([String.t()]) :: {:ok, [[float()]]} | {:error, String.t()}
+  @spec embed_text([String.t()]) :: {:ok, [embedding()]} | error()
   def embed_text(texts) when is_list(texts) do
-    :erlang.nif_error("NIF embed_text/1 not loaded")
+    with :ok <- validate_string_list(texts, "texts must be a list of strings") do
+      Native.embed_text(texts)
+    end
   end
 
-  def embed_text(_texts),
-    do: {:error, "Invalid input, expected a list of strings"}
+  def embed_text(_texts), do: {:error, "Invalid input: texts must be a list of strings"}
 
   @doc """
-  Loads the chosen reranker model.
+  Loads a reranker model.
 
   ## Examples
 
@@ -123,60 +65,32 @@ defmodule ExFastembed do
       {:ok, true}
 
       iex> ExFastembed.load_reranker("invalid-reranker")
-      {:error, "Model not recognized or not implemented: invalid-reranker"}
-
+      {:error, "Reranker model not recognized: invalid-reranker"}
   """
-  @spec load_reranker(String.t()) :: {:ok, boolean()} | {:error, String.t()}
-  def load_reranker(model_name)
-      when is_bitstring(model_name) and model_name in @reranker_models do
-    :erlang.nif_error("NIF load_reranker/1 not loaded")
-  end
+  @spec load_reranker(String.t()) :: {:ok, true} | error()
+  def load_reranker(model_name) when is_binary(model_name), do: Native.load_reranker(model_name)
 
   def load_reranker(model_name),
-    do: {:error, "Model not recognized or not implemented: #{model_name}"}
+    do: {:error, "Reranker model not recognized: #{inspect(model_name)}"}
 
   @doc """
-  Reranks documents based on a query using the loaded reranker model.
+  Reranks documents for a query using the loaded reranker model.
 
-  This function validates that:
-    - `query` is a string,
-    - `documents` is a list of strings,
-    - `return_docs` is a boolean.
-
-  If validation passes, it returns a list of tuples. Each tuple consists of:
-    - the document index (non-negative integer),
-    - the score (float),
-    - optionally the document string (or `nil` if `return_docs` is false).
-
-  ## Examples
-
-      iex> ExFastembed.rerank("search query", ["doc1", "doc2"], true)
-      {:ok, [{0, 0.95, "doc1"}, {1, 0.90, "doc2"}]}
-
-      iex> ExFastembed.rerank("search query", ["doc1", 123], true)
-      {:error, "Invalid input: documents must be a list of strings"}
-
-      iex> ExFastembed.rerank(123, ["doc1", "doc2"], true)
-      {:error, "Invalid input: Expected (String, list of strings, boolean)"}
-
-      iex> ExFastembed.rerank("search query", ["doc1", "doc2"], "true")
-      {:error, "Invalid input: Expected (String, list of strings, boolean)"}
+  Call `load_reranker/1` before calling this function.
   """
-  @spec rerank(String.t(), [String.t()], boolean()) ::
-          {:ok, [{non_neg_integer(), float(), String.t() | nil}]} | {:error, String.t()}
-
+  @spec rerank(String.t(), [String.t()], boolean()) :: {:ok, [rerank_result()]} | error()
   def rerank(query, documents, return_docs)
-      when is_bitstring(query) and is_list(documents) and is_boolean(return_docs) do
-    cond do
-      not Enum.all?(documents, &is_bitstring/1) ->
-        {:error, "Invalid input: documents must be a list of strings"}
-
-      true ->
-        # All validations passed; call the native implementation.
-        :erlang.nif_error("NIF rerank/3 not loaded")
+      when is_binary(query) and is_list(documents) and is_boolean(return_docs) do
+    with :ok <- validate_string_list(documents, "documents must be a list of strings") do
+      Native.rerank(query, documents, return_docs)
     end
   end
 
   def rerank(_query, _documents, _return_docs),
-    do: {:error, "Invalid input: Expected (String, list of strings, boolean)"}
+    do: {:error, "Invalid input: expected a string, a list of strings, and a boolean"}
+
+  @spec validate_string_list([term()], String.t()) :: :ok | error()
+  defp validate_string_list(values, message) do
+    if Enum.all?(values, &is_binary/1), do: :ok, else: {:error, "Invalid input: #{message}"}
+  end
 end

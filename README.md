@@ -1,6 +1,6 @@
 # ExFastembed
 
-ExFastembed is an Elixir wrapper around the [fastembed-rs](https://github.com/Anush008/fastembed-rs) crate. It provides a simple interface to load various text embedding models and reranker models, generate embeddings for a list of texts, and rerank documents based on a query.
+ExFastembed is an Elixir wrapper around the [fastembed-rs](https://github.com/Anush008/fastembed-rs) crate. It provides a simple interface to load text embedding models and reranker models, generate embeddings for a list of texts, and rerank documents based on a query.
 
 ## Installation
 
@@ -31,9 +31,7 @@ Before generating embeddings, you must load one of the supported text embedding 
 
 ```elixir
 iex> ExFastembed.load("BAAI/bge-small-en-v1.5")
-#It returns either:
-# {:ok, dimension } when the model is successfully loaded, or
-# {:error, "Model already loaded!" } if it has been loaded previously.
+{:ok, 384}
 ```
 
 ### Generating Embeddings
@@ -42,8 +40,7 @@ After loading the embedding model, you can generate embeddings for a list of tex
 
 ```elixir
 iex> ExFastembed.embed_text(["Hello, world!", "Elixir is awesome"])
-#Expected output:
-# {:ok, [[...], [...]] }
+{:ok, [[...], [...]]}
 ```
 
 ### Loading a Reranker Model
@@ -52,9 +49,7 @@ To load a reranker model, use the `load_reranker/1` function. For example, to lo
 
 ```elixir
 iex> ExFastembed.load_reranker("jinaai/jina-reranker-v1-turbo-en")
-#It returns either:
-# {:ok, true } when the model is successfully loaded, or
-# {:error, "Reranker already loaded!" } if it has been loaded previously.
+{:ok, true}
 ```
 
 ### Reranking Documents
@@ -63,39 +58,88 @@ Once the reranker model is loaded, you can rerank documents based on a query:
 
 ```elixir
 iex> ExFastembed.rerank("search query", ["Document 1", "Document 2"], true)
-#Expected output:
-# {:ok, [{0, 0.95, "Document 1" }, {1, 0.90, "Document 2" }] }
+{:ok, [{0, 0.95, "Document 1"}, {1, 0.90, "Document 2"}]}
 ```
 
 ## Supported Models
 
+The canonical source is `ExFastembed.embed_models/0` and `ExFastembed.reranker_models/0`.
+The lists include legacy aliases from earlier ExFastembed versions plus upstream `fastembed-rs` v5 model names. Quantized variants whose upstream repository name is ambiguous are exposed by their enum-style variant names.
+
 ### Embedding Models
 
 - `"BAAI/bge-small-en-v1.5"`
-- `"sentence-transformers/all-MiniLM-L6-v2"`
-- `"sentence-transformers/all-MiniLM-L12-v2"`
-- `"mixedbread-ai/mxbai-embed-large-v1"`
-- `"Qdrant/clip-ViT-B-32-text"`
-- `"BAAI/bge-large-en-v1.5"`
-- `"BAAI/bge-small-zh-v1.5"`
+- `"Xenova/bge-small-en-v1.5"`
+- `"Qdrant/bge-small-en-v1.5-onnx-Q"`
+- `"BGESmallENV15Q"`
 - `"BAAI/bge-base-en-v1.5"`
+- `"Xenova/bge-base-en-v1.5"`
+- `"Qdrant/bge-base-en-v1.5-onnx-Q"`
+- `"BGEBaseENV15Q"`
+- `"BAAI/bge-large-en-v1.5"`
+- `"Xenova/bge-large-en-v1.5"`
+- `"Qdrant/bge-large-en-v1.5-onnx-Q"`
+- `"BGELargeENV15Q"`
+- `"BAAI/bge-small-zh-v1.5"`
+- `"Xenova/bge-small-zh-v1.5"`
+- `"BAAI/bge-large-zh-v1.5"`
+- `"Xenova/bge-large-zh-v1.5"`
+- `"BAAI/bge-m3"`
+- `"sentence-transformers/all-MiniLM-L6-v2"`
+- `"Qdrant/all-MiniLM-L6-v2-onnx"`
+- `"Xenova/all-MiniLM-L6-v2"`
+- `"AllMiniLML6V2Q"`
+- `"sentence-transformers/all-MiniLM-L12-v2"`
+- `"Xenova/all-MiniLM-L12-v2"`
+- `"AllMiniLML12V2Q"`
+- `"sentence-transformers/all-mpnet-base-v2"`
+- `"Xenova/all-mpnet-base-v2"`
 - `"sentence-transformers/paraphrase-MiniLM-L12-v2"`
+- `"sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"`
+- `"Xenova/paraphrase-multilingual-MiniLM-L12-v2"`
+- `"Qdrant/paraphrase-multilingual-MiniLM-L12-v2-onnx-Q"`
+- `"ParaphraseMLMiniLML12V2Q"`
 - `"sentence-transformers/paraphrase-multilingual-mpnet-base-v2"`
+- `"Xenova/paraphrase-multilingual-mpnet-base-v2"`
 - `"lightonai/ModernBERT-embed-large"`
+- `"lightonai/modernbert-embed-large"`
 - `"nomic-ai/nomic-embed-text-v1"`
 - `"nomic-ai/nomic-embed-text-v1.5"`
+- `"NomicEmbedTextV15Q"`
 - `"intfloat/multilingual-e5-small"`
 - `"intfloat/multilingual-e5-base"`
 - `"intfloat/multilingual-e5-large"`
+- `"Qdrant/multilingual-e5-large-onnx"`
+- `"mixedbread-ai/mxbai-embed-large-v1"`
+- `"MxbaiEmbedLargeV1Q"`
 - `"Alibaba-NLP/gte-base-en-v1.5"`
+- `"GTEBaseENV15Q"`
 - `"Alibaba-NLP/gte-large-en-v1.5"`
+- `"GTELargeENV15Q"`
+- `"Qdrant/clip-ViT-B-32-text"`
+- `"jinaai/jina-embeddings-v2-base-code"`
+- `"jinaai/jina-embeddings-v2-base-en"`
+- `"onnx-community/embeddinggemma-300m-ONNX"`
+- `"snowflake/snowflake-arctic-embed-xs"`
+- `"SnowflakeArcticEmbedXSQ"`
+- `"snowflake/snowflake-arctic-embed-s"`
+- `"SnowflakeArcticEmbedSQ"`
+- `"Snowflake/snowflake-arctic-embed-m"`
+- `"snowflake/snowflake-arctic-embed-m"`
+- `"SnowflakeArcticEmbedMQ"`
+- `"snowflake/snowflake-arctic-embed-m-long"`
+- `"SnowflakeArcticEmbedMLongQ"`
+- `"snowflake/snowflake-arctic-embed-l"`
+- `"SnowflakeArcticEmbedLQ"`
 
 ### Reranker Models
 
 - `"BAAI/bge-reranker-base"`
 - `"BAAI/bge-reranker-v2-m3"`
+- `"rozgo/bge-reranker-v2-m3"`
 - `"jinaai/jina-reranker-v1-turbo-en"`
 - `"jinaai/jina-reranker-v2-base-multiligual"`
+- `"jinaai/jina-reranker-v2-base-multilingual"`
 
 ## License
 

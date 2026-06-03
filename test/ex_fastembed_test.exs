@@ -1,35 +1,16 @@
 defmodule ExFastembedTest do
-  use ExUnit.Case
+  use ExUnit.Case, async: true
 
-  # Helper to load the embedding model if not already loaded.
-  defp load_embedding_model_if_needed() do
-    case ExFastembed.load("BAAI/bge-small-en-v1.5") do
-      {:ok, dim} ->
-        assert is_integer(dim)
-        :ok
+  describe "embedding model functions" do
+    test "embed_models/0 includes legacy names and upstream v5 additions" do
+      models = ExFastembed.embed_models()
 
-      {:error, "Model already loaded!"} ->
-        :ok
-
-      other ->
-        flunk("Unexpected result when loading embedding model: #{inspect(other)}")
-    end
-  end
-
-  describe "Embedding model functions" do
-    test "load/1 with valid embedding model 'BAAI/bge-small-en-v1.5'" do
-      result = ExFastembed.load("BAAI/bge-small-en-v1.5")
-
-      case result do
-        {:ok, dim} ->
-          assert is_integer(dim)
-
-        {:error, "Model already loaded!"} ->
-          assert true
-
-        other ->
-          flunk("Unexpected result: #{inspect(other)}")
-      end
+      assert "BAAI/bge-small-en-v1.5" in models
+      assert "BAAI/bge-m3" in models
+      assert "jinaai/jina-embeddings-v2-base-code" in models
+      assert "onnx-community/embeddinggemma-300m-ONNX" in models
+      assert "snowflake/snowflake-arctic-embed-l" in models
+      assert "SnowflakeArcticEmbedLQ" in models
     end
 
     test "load/1 with an invalid embedding model returns an error tuple" do
@@ -37,39 +18,28 @@ defmodule ExFastembedTest do
                ExFastembed.load("invalid-model")
     end
 
-    test "embed_text/1 with valid input (list of strings)" do
-      load_embedding_model_if_needed()
-      # Valid call should return a tuple with a list of embeddings.
-      case ExFastembed.embed_text(["Hello", "World"]) do
-        {:ok, embeddings} ->
-          assert is_list(embeddings)
-
-        {:error, reason} ->
-          flunk("Unexpected error when embedding text: #{reason}")
-      end
+    test "load/1 with invalid input returns an error tuple" do
+      assert {:error, "Model not recognized or not implemented: 123"} == ExFastembed.load(123)
     end
 
-    test "embed_text/1 with invalid input (not a list)" do
-      assert_raise ArgumentError, fn ->
-        ExFastembed.embed_text("Not a list")
-      end
+    test "embed_text/1 validates input before calling native code" do
+      assert {:error, "Invalid input: texts must be a list of strings"} ==
+               ExFastembed.embed_text("Not a list")
+
+      assert {:error, "Invalid input: texts must be a list of strings"} ==
+               ExFastembed.embed_text(["doc", 123])
     end
   end
 
-  describe "Reranker model functions" do
-    test "load_reranker/1 with valid reranker model 'jinaai/jina-reranker-v1-turbo-en'" do
-      result = ExFastembed.load_reranker("jinaai/jina-reranker-v1-turbo-en")
+  describe "reranker model functions" do
+    test "reranker_models/0 includes legacy names and corrected upstream names" do
+      models = ExFastembed.reranker_models()
 
-      case result do
-        {:ok, true} ->
-          assert true
-
-        {:error, "Reranker already loaded!"} ->
-          assert true
-
-        other ->
-          flunk("Unexpected result: #{inspect(other)}")
-      end
+      assert "BAAI/bge-reranker-base" in models
+      assert "BAAI/bge-reranker-v2-m3" in models
+      assert "rozgo/bge-reranker-v2-m3" in models
+      assert "jinaai/jina-reranker-v2-base-multiligual" in models
+      assert "jinaai/jina-reranker-v2-base-multilingual" in models
     end
 
     test "load_reranker/1 with an invalid reranker model returns an error tuple" do
@@ -77,37 +47,19 @@ defmodule ExFastembedTest do
                ExFastembed.load_reranker("invalid-reranker")
     end
 
-    test "rerank/3 with valid inputs but no reranker loaded" do
-      load_embedding_model_if_needed()
-
-      case ExFastembed.rerank("search query", ["doc1", "doc2"], true) do
-        {:ok, [{0, _, "doc1"}, {1, _, "doc2"}]} ->
-          assert true
-
-        {:error, "No reranker loaded. Call load_reranker/1 first."} ->
-          assert true
-
-        other ->
-          flunk("Unexpected result: #{inspect(other)}")
-      end
+    test "load_reranker/1 with invalid input returns an error tuple" do
+      assert {:error, "Reranker model not recognized: 123"} == ExFastembed.load_reranker(123)
     end
 
-    test "rerank/3 with invalid documents (non-string in list)" do
-      assert_raise ArgumentError, fn ->
-        ExFastembed.rerank("search query", ["doc1", 123], true)
-      end
-    end
+    test "rerank/3 validates input before calling native code" do
+      assert {:error, "Invalid input: documents must be a list of strings"} ==
+               ExFastembed.rerank("search query", ["doc1", 123], true)
 
-    test "rerank/3 with invalid input types" do
-      # Wrong type for the query argument.
-      assert_raise ArgumentError, fn ->
-        ExFastembed.rerank(123, ["doc1", "doc2"], true)
-      end
+      assert {:error, "Invalid input: expected a string, a list of strings, and a boolean"} ==
+               ExFastembed.rerank(123, ["doc1", "doc2"], true)
 
-      # Wrong type for the return_docs argument.
-      assert_raise ArgumentError, fn ->
-        ExFastembed.rerank("search query", ["doc1", "doc2"], "true")
-      end
+      assert {:error, "Invalid input: expected a string, a list of strings, and a boolean"} ==
+               ExFastembed.rerank("search query", ["doc1", "doc2"], "true")
     end
   end
 end

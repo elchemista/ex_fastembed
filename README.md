@@ -14,10 +14,13 @@ def deps do
 end
 ```
 
-How to compile:
+Requirements:
 
-* Install clang (e.g., `sudo apt install clang`)
-* Install Rust (e.g., `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`)
+- Elixir 1.18 or later
+- Rust 1.91 or later
+- clang (e.g., `sudo apt install clang`)
+
+Compile the dependency:
 
 ```bash
 export CC=/usr/bin/clang CXX=/usr/bin/clang++ RUSTLER_PRECOMPILATION_EXAMPLE_BUILD=1 && mix compile
@@ -34,6 +37,8 @@ iex> ExFastembed.load("BAAI/bge-small-en-v1.5")
 {:ok, 384}
 ```
 
+Calling `load/1` again replaces the active embedding model.
+
 ### Generating Embeddings
 
 After loading the embedding model, you can generate embeddings for a list of texts:
@@ -42,6 +47,8 @@ After loading the embedding model, you can generate embeddings for a list of tex
 iex> ExFastembed.embed_text(["Hello, world!", "Elixir is awesome"])
 {:ok, [[...], [...]]}
 ```
+
+An empty input returns `{:ok, []}` without running inference.
 
 ### Loading a Reranker Model
 
@@ -52,6 +59,8 @@ iex> ExFastembed.load_reranker("jinaai/jina-reranker-v1-turbo-en")
 {:ok, true}
 ```
 
+Calling `load_reranker/1` again replaces the active reranker model.
+
 ### Reranking Documents
 
 Once the reranker model is loaded, you can rerank documents based on a query:
@@ -61,85 +70,89 @@ iex> ExFastembed.rerank("search query", ["Document 1", "Document 2"], true)
 {:ok, [{0, 0.95, "Document 1"}, {1, 0.90, "Document 2"}]}
 ```
 
+An empty document list returns `{:ok, []}` without running inference.
+
 ## Supported Models
 
-The canonical source is `ExFastembed.embed_models/0` and `ExFastembed.reranker_models/0`.
-The lists include legacy aliases from earlier ExFastembed versions plus upstream `fastembed-rs` v5 model names. Quantized variants whose upstream repository name is ambiguous are exposed by their enum-style variant names.
+The runtime source is `ExFastembed.embed_models/0` and `ExFastembed.reranker_models/0`.
+These lists are generated from the bundled `fastembed-rs` 5.17.3 metadata, with legacy ExFastembed aliases retained. Quantized variants whose repository name is ambiguous are exposed by their enum-style variant names.
 
 ### Embedding Models
 
-- `"BAAI/bge-small-en-v1.5"`
-- `"Xenova/bge-small-en-v1.5"`
-- `"Qdrant/bge-small-en-v1.5-onnx-Q"`
-- `"BGESmallENV15Q"`
-- `"BAAI/bge-base-en-v1.5"`
-- `"Xenova/bge-base-en-v1.5"`
-- `"Qdrant/bge-base-en-v1.5-onnx-Q"`
-- `"BGEBaseENV15Q"`
-- `"BAAI/bge-large-en-v1.5"`
-- `"Xenova/bge-large-en-v1.5"`
-- `"Qdrant/bge-large-en-v1.5-onnx-Q"`
-- `"BGELargeENV15Q"`
-- `"BAAI/bge-small-zh-v1.5"`
-- `"Xenova/bge-small-zh-v1.5"`
-- `"BAAI/bge-large-zh-v1.5"`
-- `"Xenova/bge-large-zh-v1.5"`
-- `"BAAI/bge-m3"`
-- `"sentence-transformers/all-MiniLM-L6-v2"`
-- `"Qdrant/all-MiniLM-L6-v2-onnx"`
-- `"Xenova/all-MiniLM-L6-v2"`
-- `"AllMiniLML6V2Q"`
-- `"sentence-transformers/all-MiniLM-L12-v2"`
-- `"Xenova/all-MiniLM-L12-v2"`
+- `"Alibaba-NLP/gte-base-en-v1.5"`
+- `"Alibaba-NLP/gte-large-en-v1.5"`
 - `"AllMiniLML12V2Q"`
-- `"sentence-transformers/all-mpnet-base-v2"`
-- `"Xenova/all-mpnet-base-v2"`
-- `"sentence-transformers/paraphrase-MiniLM-L12-v2"`
-- `"sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"`
-- `"Xenova/paraphrase-multilingual-MiniLM-L12-v2"`
-- `"Qdrant/paraphrase-multilingual-MiniLM-L12-v2-onnx-Q"`
-- `"ParaphraseMLMiniLML12V2Q"`
-- `"sentence-transformers/paraphrase-multilingual-mpnet-base-v2"`
-- `"Xenova/paraphrase-multilingual-mpnet-base-v2"`
+- `"AllMiniLML6V2Q"`
+- `"BAAI/bge-base-en-v1.5"`
+- `"BAAI/bge-large-en-v1.5"`
+- `"BAAI/bge-large-zh-v1.5"`
+- `"BAAI/bge-m3"`
+- `"BAAI/bge-small-en-v1.5"`
+- `"BAAI/bge-small-zh-v1.5"`
+- `"BGEBaseENV15Q"`
+- `"BGELargeENV15Q"`
+- `"BGESmallENV15Q"`
+- `"EmbeddingGemma300MQ"`
+- `"EmbeddingGemma300MQ4"`
+- `"GTEBaseENV15Q"`
+- `"GTELargeENV15Q"`
+- `"intfloat/multilingual-e5-base"`
+- `"intfloat/multilingual-e5-large"`
+- `"intfloat/multilingual-e5-small"`
+- `"jinaai/jina-embeddings-v2-base-code"`
+- `"jinaai/jina-embeddings-v2-base-en"`
 - `"lightonai/ModernBERT-embed-large"`
 - `"lightonai/modernbert-embed-large"`
+- `"mixedbread-ai/mxbai-embed-large-v1"`
+- `"MxbaiEmbedLargeV1Q"`
 - `"nomic-ai/nomic-embed-text-v1"`
 - `"nomic-ai/nomic-embed-text-v1.5"`
 - `"NomicEmbedTextV15Q"`
-- `"intfloat/multilingual-e5-small"`
-- `"intfloat/multilingual-e5-base"`
-- `"intfloat/multilingual-e5-large"`
-- `"Qdrant/multilingual-e5-large-onnx"`
-- `"mixedbread-ai/mxbai-embed-large-v1"`
-- `"MxbaiEmbedLargeV1Q"`
-- `"Alibaba-NLP/gte-base-en-v1.5"`
-- `"GTEBaseENV15Q"`
-- `"Alibaba-NLP/gte-large-en-v1.5"`
-- `"GTELargeENV15Q"`
-- `"Qdrant/clip-ViT-B-32-text"`
-- `"jinaai/jina-embeddings-v2-base-code"`
-- `"jinaai/jina-embeddings-v2-base-en"`
 - `"onnx-community/embeddinggemma-300m-ONNX"`
-- `"snowflake/snowflake-arctic-embed-xs"`
-- `"SnowflakeArcticEmbedXSQ"`
-- `"snowflake/snowflake-arctic-embed-s"`
-- `"SnowflakeArcticEmbedSQ"`
+- `"ParaphraseMLMiniLML12V2Q"`
+- `"Qdrant/all-MiniLM-L6-v2-onnx"`
+- `"Qdrant/bge-base-en-v1.5-onnx-Q"`
+- `"Qdrant/bge-large-en-v1.5-onnx-Q"`
+- `"Qdrant/bge-small-en-v1.5-onnx-Q"`
+- `"Qdrant/clip-ViT-B-32-text"`
+- `"Qdrant/multilingual-e5-large-onnx"`
+- `"Qdrant/paraphrase-multilingual-MiniLM-L12-v2-onnx-Q"`
+- `"sentence-transformers/all-MiniLM-L12-v2"`
+- `"sentence-transformers/all-MiniLM-L6-v2"`
+- `"sentence-transformers/all-mpnet-base-v2"`
+- `"sentence-transformers/paraphrase-MiniLM-L12-v2"`
+- `"sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"`
+- `"sentence-transformers/paraphrase-multilingual-mpnet-base-v2"`
+- `"snowflake/snowflake-arctic-embed-l"`
 - `"Snowflake/snowflake-arctic-embed-m"`
 - `"snowflake/snowflake-arctic-embed-m"`
-- `"SnowflakeArcticEmbedMQ"`
 - `"snowflake/snowflake-arctic-embed-m-long"`
-- `"SnowflakeArcticEmbedMLongQ"`
-- `"snowflake/snowflake-arctic-embed-l"`
+- `"snowflake/snowflake-arctic-embed-s"`
+- `"snowflake/snowflake-arctic-embed-xs"`
 - `"SnowflakeArcticEmbedLQ"`
+- `"SnowflakeArcticEmbedMLongQ"`
+- `"SnowflakeArcticEmbedMQ"`
+- `"SnowflakeArcticEmbedSQ"`
+- `"SnowflakeArcticEmbedXSQ"`
+- `"Xenova/all-MiniLM-L12-v2"`
+- `"Xenova/all-MiniLM-L6-v2"`
+- `"Xenova/all-mpnet-base-v2"`
+- `"Xenova/bge-base-en-v1.5"`
+- `"Xenova/bge-large-en-v1.5"`
+- `"Xenova/bge-large-zh-v1.5"`
+- `"Xenova/bge-small-en-v1.5"`
+- `"Xenova/bge-small-zh-v1.5"`
+- `"Xenova/paraphrase-multilingual-MiniLM-L12-v2"`
+- `"Xenova/paraphrase-multilingual-mpnet-base-v2"`
 
 ### Reranker Models
 
 - `"BAAI/bge-reranker-base"`
 - `"BAAI/bge-reranker-v2-m3"`
-- `"rozgo/bge-reranker-v2-m3"`
 - `"jinaai/jina-reranker-v1-turbo-en"`
 - `"jinaai/jina-reranker-v2-base-multiligual"`
 - `"jinaai/jina-reranker-v2-base-multilingual"`
+- `"rozgo/bge-reranker-v2-m3"`
 
 ## License
 

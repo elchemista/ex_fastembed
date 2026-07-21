@@ -8,6 +8,8 @@ erl_crash.dump
 /priv/native
 *.ez
 *.beam
+/.codex/
+/.agents/
 /config/*.secret.exs
 /.elixir*
 .fastembed_cache/

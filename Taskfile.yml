@@ -39,9 +39,15 @@ tasks:
       - mix test --trace
 
   check:
-    desc: Check codes
+    desc: Run all merge checks
     cmds:
+      - mix format --check-formatted
+      - mix compile --warnings-as-errors
+      - task: test
+      - mix credo --strict
       - task: dialyzer
+      - task: rust-format
+      - task: rust-test
       - task: clippy
 
   dialyzer:
@@ -49,9 +55,19 @@ tasks:
     cmd: mix dialyzer
 
   clippy:
-    desc: Run clippy
+    desc: Run Clippy with warnings denied
     dir: "native/{{.PROJECT_DIR_NAME}}"
-    cmd: cargo clippy
+    cmd: cargo clippy --all-targets -- -D warnings
+
+  rust-format:
+    desc: Check Rust formatting
+    dir: "native/{{.PROJECT_DIR_NAME}}"
+    cmd: cargo fmt --check
+
+  rust-test:
+    desc: Run Rust unit tests
+    dir: "native/{{.PROJECT_DIR_NAME}}"
+    cmd: cargo test --locked
 
   clean:
     desc: Clean up

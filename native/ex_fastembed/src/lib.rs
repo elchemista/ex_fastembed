@@ -3,23 +3,107 @@ use fastembed::{
 };
 use std::sync::{Mutex, OnceLock};
 
-static EMBED_MODEL: OnceLock<Mutex<TextEmbedding>> = OnceLock::new();
-static RERANKER: OnceLock<Mutex<TextRerank>> = OnceLock::new();
+static EMBED_MODEL: OnceLock<Mutex<Option<TextEmbedding>>> = OnceLock::new();
+static RERANKER: OnceLock<Mutex<Option<TextRerank>>> = OnceLock::new();
+
+const LEGACY_EMBEDDING_ALIASES: &[(&str, EmbeddingModel)] = &[
+    ("BAAI/bge-small-en-v1.5", EmbeddingModel::BGESmallENV15),
+    ("BAAI/bge-base-en-v1.5", EmbeddingModel::BGEBaseENV15),
+    ("BAAI/bge-large-en-v1.5", EmbeddingModel::BGELargeENV15),
+    ("BAAI/bge-small-zh-v1.5", EmbeddingModel::BGESmallZHV15),
+    ("BAAI/bge-large-zh-v1.5", EmbeddingModel::BGELargeZHV15),
+    (
+        "sentence-transformers/all-MiniLM-L6-v2",
+        EmbeddingModel::AllMiniLML6V2,
+    ),
+    (
+        "sentence-transformers/all-MiniLM-L12-v2",
+        EmbeddingModel::AllMiniLML12V2,
+    ),
+    (
+        "sentence-transformers/all-mpnet-base-v2",
+        EmbeddingModel::AllMpnetBaseV2,
+    ),
+    (
+        "sentence-transformers/paraphrase-MiniLM-L12-v2",
+        EmbeddingModel::ParaphraseMLMiniLML12V2,
+    ),
+    (
+        "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+        EmbeddingModel::ParaphraseMLMiniLML12V2,
+    ),
+    (
+        "sentence-transformers/paraphrase-multilingual-mpnet-base-v2",
+        EmbeddingModel::ParaphraseMLMpnetBaseV2,
+    ),
+    (
+        "intfloat/multilingual-e5-large",
+        EmbeddingModel::MultilingualE5Large,
+    ),
+    (
+        "lightonai/ModernBERT-embed-large",
+        EmbeddingModel::ModernBertEmbedLarge,
+    ),
+    (
+        "snowflake/snowflake-arctic-embed-m",
+        EmbeddingModel::SnowflakeArcticEmbedM,
+    ),
+];
+
+const LEGACY_RERANKER_ALIASES: &[(&str, RerankerModel)] = &[
+    ("BAAI/bge-reranker-v2-m3", RerankerModel::BGERerankerV2M3),
+    (
+        "jinaai/jina-reranker-v2-base-multiligual",
+        RerankerModel::JINARerankerV2BaseMultiligual,
+    ),
+];
 
 #[rustler::nif]
 fn embed_models() -> Vec<String> {
-    embedding_aliases()
-        .into_iter()
-        .map(|(name, _model)| name.to_string())
-        .collect()
+    supported_embedding_model_names()
+}
+
+fn supported_embedding_model_names() -> Vec<String> {
+    let supported_models = TextEmbedding::list_supported_models();
+    let mut names = Vec::with_capacity(supported_models.len() + LEGACY_EMBEDDING_ALIASES.len());
+
+    for model_info in supported_models {
+        names.push(model_info.model_code);
+
+        if is_quantized_model(&model_info.model) {
+            names.push(model_info.model.to_string());
+        }
+    }
+
+    names.extend(
+        LEGACY_EMBEDDING_ALIASES
+            .iter()
+            .map(|(name, _model)| (*name).to_string()),
+    );
+
+    sorted_unique_names(names)
 }
 
 #[rustler::nif]
 fn reranker_models() -> Vec<String> {
-    reranker_aliases()
-        .into_iter()
-        .map(|(name, _model)| name.to_string())
-        .collect()
+    supported_reranker_model_names()
+}
+
+fn supported_reranker_model_names() -> Vec<String> {
+    let supported_models = TextRerank::list_supported_models();
+    let mut names = Vec::with_capacity(supported_models.len() + LEGACY_RERANKER_ALIASES.len());
+
+    for model_info in supported_models {
+        names.push(model_info.model_code);
+    }
+
+    names.extend(
+        LEGACY_RERANKER_ALIASES
+            .iter()
+            .map(|(name, _model)| (*name).to_string()),
+    );
+
+    sorted_unique_names(names)
 }
 
 #[rustler::nif(schedule = "DirtyCpu")]
@@ -30,20 +114,27 @@ fn load(model_name: String) -> Result<i64, String> {
     let dimension = info.dim as i64;
     let text_embedding =
         TextEmbedding::try_new(TextInitOptions::new(model)).map_err(|error| error.to_string())?;
+    let model_slot = EMBED_MODEL.get_or_init(|| Mutex::new(None));
+    let mut model_slot = model_slot.lock().map_err(|error| error.to_string())?;
 
-    EMBED_MODEL
-        .set(Mutex::new(text_embedding))
-        .map_err(|_| "Model already loaded!".to_string())?;
+    *model_slot = Some(text_embedding);
 
     Ok(dimension)
 }
 
 #[rustler::nif(schedule = "DirtyCpu")]
 fn embed_text(texts: Vec<String>) -> Result<Vec<Vec<f32>>, String> {
-    let model = EMBED_MODEL
+    if texts.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let model_slot = EMBED_MODEL
         .get()
         .ok_or_else(|| "No model loaded. Call load/1 first.".to_string())?;
-    let mut model = model.lock().map_err(|error| error.to_string())?;
+    let mut model_slot = model_slot.lock().map_err(|error| error.to_string())?;
+    let model = model_slot
+        .as_mut()
+        .ok_or_else(|| "No model loaded. Call load/1 first.".to_string())?;
 
     model.embed(texts, None).map_err(|error| error.to_string())
 }
@@ -54,10 +145,10 @@ fn load_reranker(model_name: String) -> Result<bool, String> {
     let reranker =
         TextRerank::try_new(RerankInitOptions::new(model).with_show_download_progress(true))
             .map_err(|error| error.to_string())?;
+    let reranker_slot = RERANKER.get_or_init(|| Mutex::new(None));
+    let mut reranker_slot = reranker_slot.lock().map_err(|error| error.to_string())?;
 
-    RERANKER
-        .set(Mutex::new(reranker))
-        .map_err(|_| "Reranker already loaded!".to_string())?;
+    *reranker_slot = Some(reranker);
 
     Ok(true)
 }
@@ -68,10 +159,17 @@ fn rerank(
     documents: Vec<String>,
     return_docs: bool,
 ) -> Result<Vec<(usize, f32, Option<String>)>, String> {
-    let reranker = RERANKER
+    if documents.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let reranker_slot = RERANKER
         .get()
         .ok_or_else(|| "No reranker loaded. Call load_reranker/1 first.".to_string())?;
-    let mut reranker = reranker.lock().map_err(|error| error.to_string())?;
+    let mut reranker_slot = reranker_slot.lock().map_err(|error| error.to_string())?;
+    let reranker = reranker_slot
+        .as_mut()
+        .ok_or_else(|| "No reranker loaded. Call load_reranker/1 first.".to_string())?;
     let document_refs: Vec<&String> = documents.iter().collect();
 
     reranker
@@ -86,221 +184,117 @@ fn rerank(
 }
 
 fn resolve_embedding_model(model_name: &str) -> Result<EmbeddingModel, String> {
-    embedding_aliases()
-        .into_iter()
+    if let Some((_alias, model)) = LEGACY_EMBEDDING_ALIASES
+        .iter()
         .find(|(alias, _model)| alias.eq_ignore_ascii_case(model_name))
-        .map(|(_alias, model)| model)
+    {
+        return Ok(model.clone());
+    }
+
+    if let Ok(model) = model_name.parse::<EmbeddingModel>() {
+        if is_quantized_model(&model) {
+            return Ok(model);
+        }
+    }
+
+    TextEmbedding::list_supported_models()
+        .into_iter()
+        .filter(|model_info| model_info.model_code.eq_ignore_ascii_case(model_name))
+        .min_by_key(|model_info| {
+            (
+                is_quantized_model(&model_info.model),
+                model_info.model.to_string(),
+            )
+        })
+        .map(|model_info| model_info.model)
         .ok_or_else(|| format!("Model not recognized or not implemented: {model_name}"))
 }
 
 fn resolve_reranker_model(model_name: &str) -> Result<RerankerModel, String> {
-    reranker_aliases()
-        .into_iter()
+    if let Some((_alias, model)) = LEGACY_RERANKER_ALIASES
+        .iter()
         .find(|(alias, _model)| alias.eq_ignore_ascii_case(model_name))
-        .map(|(_alias, model)| model)
+    {
+        return Ok(model.clone());
+    }
+
+    TextRerank::list_supported_models()
+        .into_iter()
+        .find(|model_info| model_info.model_code.eq_ignore_ascii_case(model_name))
+        .map(|model_info| model_info.model)
         .ok_or_else(|| format!("Reranker model not recognized: {model_name}"))
 }
 
-fn embedding_aliases() -> Vec<(&'static str, EmbeddingModel)> {
-    vec![
-        ("BAAI/bge-small-en-v1.5", EmbeddingModel::BGESmallENV15),
-        ("Xenova/bge-small-en-v1.5", EmbeddingModel::BGESmallENV15),
-        (
-            "Qdrant/bge-small-en-v1.5-onnx-Q",
-            EmbeddingModel::BGESmallENV15Q,
-        ),
-        ("BGESmallENV15Q", EmbeddingModel::BGESmallENV15Q),
-        ("BAAI/bge-base-en-v1.5", EmbeddingModel::BGEBaseENV15),
-        ("Xenova/bge-base-en-v1.5", EmbeddingModel::BGEBaseENV15),
-        (
-            "Qdrant/bge-base-en-v1.5-onnx-Q",
-            EmbeddingModel::BGEBaseENV15Q,
-        ),
-        ("BGEBaseENV15Q", EmbeddingModel::BGEBaseENV15Q),
-        ("BAAI/bge-large-en-v1.5", EmbeddingModel::BGELargeENV15),
-        ("Xenova/bge-large-en-v1.5", EmbeddingModel::BGELargeENV15),
-        (
-            "Qdrant/bge-large-en-v1.5-onnx-Q",
-            EmbeddingModel::BGELargeENV15Q,
-        ),
-        ("BGELargeENV15Q", EmbeddingModel::BGELargeENV15Q),
-        ("BAAI/bge-small-zh-v1.5", EmbeddingModel::BGESmallZHV15),
-        ("Xenova/bge-small-zh-v1.5", EmbeddingModel::BGESmallZHV15),
-        ("BAAI/bge-large-zh-v1.5", EmbeddingModel::BGELargeZHV15),
-        ("Xenova/bge-large-zh-v1.5", EmbeddingModel::BGELargeZHV15),
-        ("BAAI/bge-m3", EmbeddingModel::BGEM3),
-        (
-            "sentence-transformers/all-MiniLM-L6-v2",
-            EmbeddingModel::AllMiniLML6V2,
-        ),
-        (
-            "Qdrant/all-MiniLM-L6-v2-onnx",
-            EmbeddingModel::AllMiniLML6V2,
-        ),
-        ("Xenova/all-MiniLM-L6-v2", EmbeddingModel::AllMiniLML6V2Q),
-        ("AllMiniLML6V2Q", EmbeddingModel::AllMiniLML6V2Q),
-        (
-            "sentence-transformers/all-MiniLM-L12-v2",
-            EmbeddingModel::AllMiniLML12V2,
-        ),
-        ("Xenova/all-MiniLM-L12-v2", EmbeddingModel::AllMiniLML12V2),
-        ("AllMiniLML12V2Q", EmbeddingModel::AllMiniLML12V2Q),
-        (
-            "sentence-transformers/all-mpnet-base-v2",
-            EmbeddingModel::AllMpnetBaseV2,
-        ),
-        ("Xenova/all-mpnet-base-v2", EmbeddingModel::AllMpnetBaseV2),
-        (
-            "sentence-transformers/paraphrase-MiniLM-L12-v2",
-            EmbeddingModel::ParaphraseMLMiniLML12V2,
-        ),
-        (
-            "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
-            EmbeddingModel::ParaphraseMLMiniLML12V2,
-        ),
-        (
-            "Xenova/paraphrase-multilingual-MiniLM-L12-v2",
-            EmbeddingModel::ParaphraseMLMiniLML12V2,
-        ),
-        (
-            "Qdrant/paraphrase-multilingual-MiniLM-L12-v2-onnx-Q",
-            EmbeddingModel::ParaphraseMLMiniLML12V2Q,
-        ),
-        (
-            "ParaphraseMLMiniLML12V2Q",
-            EmbeddingModel::ParaphraseMLMiniLML12V2Q,
-        ),
-        (
-            "sentence-transformers/paraphrase-multilingual-mpnet-base-v2",
-            EmbeddingModel::ParaphraseMLMpnetBaseV2,
-        ),
-        (
-            "Xenova/paraphrase-multilingual-mpnet-base-v2",
-            EmbeddingModel::ParaphraseMLMpnetBaseV2,
-        ),
-        (
-            "lightonai/ModernBERT-embed-large",
-            EmbeddingModel::ModernBertEmbedLarge,
-        ),
-        (
-            "lightonai/modernbert-embed-large",
-            EmbeddingModel::ModernBertEmbedLarge,
-        ),
-        (
-            "nomic-ai/nomic-embed-text-v1",
-            EmbeddingModel::NomicEmbedTextV1,
-        ),
-        (
-            "nomic-ai/nomic-embed-text-v1.5",
-            EmbeddingModel::NomicEmbedTextV15,
-        ),
-        ("NomicEmbedTextV15Q", EmbeddingModel::NomicEmbedTextV15Q),
-        (
-            "intfloat/multilingual-e5-small",
-            EmbeddingModel::MultilingualE5Small,
-        ),
-        (
-            "intfloat/multilingual-e5-base",
-            EmbeddingModel::MultilingualE5Base,
-        ),
-        (
-            "intfloat/multilingual-e5-large",
-            EmbeddingModel::MultilingualE5Large,
-        ),
-        (
-            "Qdrant/multilingual-e5-large-onnx",
-            EmbeddingModel::MultilingualE5Large,
-        ),
-        (
-            "mixedbread-ai/mxbai-embed-large-v1",
-            EmbeddingModel::MxbaiEmbedLargeV1,
-        ),
-        ("MxbaiEmbedLargeV1Q", EmbeddingModel::MxbaiEmbedLargeV1Q),
-        ("Alibaba-NLP/gte-base-en-v1.5", EmbeddingModel::GTEBaseENV15),
-        ("GTEBaseENV15Q", EmbeddingModel::GTEBaseENV15Q),
-        (
-            "Alibaba-NLP/gte-large-en-v1.5",
-            EmbeddingModel::GTELargeENV15,
-        ),
-        ("GTELargeENV15Q", EmbeddingModel::GTELargeENV15Q),
-        ("Qdrant/clip-ViT-B-32-text", EmbeddingModel::ClipVitB32),
-        (
-            "jinaai/jina-embeddings-v2-base-code",
-            EmbeddingModel::JinaEmbeddingsV2BaseCode,
-        ),
-        (
-            "jinaai/jina-embeddings-v2-base-en",
-            EmbeddingModel::JinaEmbeddingsV2BaseEN,
-        ),
-        (
-            "onnx-community/embeddinggemma-300m-ONNX",
-            EmbeddingModel::EmbeddingGemma300M,
-        ),
-        (
-            "snowflake/snowflake-arctic-embed-xs",
-            EmbeddingModel::SnowflakeArcticEmbedXS,
-        ),
-        (
-            "SnowflakeArcticEmbedXSQ",
-            EmbeddingModel::SnowflakeArcticEmbedXSQ,
-        ),
-        (
-            "snowflake/snowflake-arctic-embed-s",
-            EmbeddingModel::SnowflakeArcticEmbedS,
-        ),
-        (
-            "SnowflakeArcticEmbedSQ",
-            EmbeddingModel::SnowflakeArcticEmbedSQ,
-        ),
-        (
-            "Snowflake/snowflake-arctic-embed-m",
-            EmbeddingModel::SnowflakeArcticEmbedM,
-        ),
-        (
-            "snowflake/snowflake-arctic-embed-m",
-            EmbeddingModel::SnowflakeArcticEmbedM,
-        ),
-        (
-            "SnowflakeArcticEmbedMQ",
-            EmbeddingModel::SnowflakeArcticEmbedMQ,
-        ),
-        (
-            "snowflake/snowflake-arctic-embed-m-long",
-            EmbeddingModel::SnowflakeArcticEmbedMLong,
-        ),
-        (
-            "SnowflakeArcticEmbedMLongQ",
-            EmbeddingModel::SnowflakeArcticEmbedMLongQ,
-        ),
-        (
-            "snowflake/snowflake-arctic-embed-l",
-            EmbeddingModel::SnowflakeArcticEmbedL,
-        ),
-        (
-            "SnowflakeArcticEmbedLQ",
-            EmbeddingModel::SnowflakeArcticEmbedLQ,
-        ),
-    ]
+fn sorted_unique_names(mut names: Vec<String>) -> Vec<String> {
+    names.sort_by(|left, right| {
+        left.to_ascii_lowercase()
+            .cmp(&right.to_ascii_lowercase())
+            .then_with(|| left.cmp(right))
+    });
+    names.dedup();
+    names
 }
 
-fn reranker_aliases() -> Vec<(&'static str, RerankerModel)> {
-    vec![
-        ("BAAI/bge-reranker-base", RerankerModel::BGERerankerBase),
-        ("BAAI/bge-reranker-v2-m3", RerankerModel::BGERerankerV2M3),
-        ("rozgo/bge-reranker-v2-m3", RerankerModel::BGERerankerV2M3),
-        (
-            "jinaai/jina-reranker-v1-turbo-en",
-            RerankerModel::JINARerankerV1TurboEn,
-        ),
-        (
-            "jinaai/jina-reranker-v2-base-multiligual",
-            RerankerModel::JINARerankerV2BaseMultiligual,
-        ),
-        (
-            "jinaai/jina-reranker-v2-base-multilingual",
-            RerankerModel::JINARerankerV2BaseMultiligual,
-        ),
-    ]
+fn is_quantized_model(model: &EmbeddingModel) -> bool {
+    model
+        .to_string()
+        .rsplit_once('Q')
+        .is_some_and(|(prefix, suffix)| {
+            !prefix.is_empty() && suffix.chars().all(|character| character.is_ascii_digit())
+        })
 }
 
 rustler::init!("Elixir.ExFastembed.Native");
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn advertised_embedding_models_are_sorted_unique_and_resolvable() {
+        let models = supported_embedding_model_names();
+
+        assert_eq!(models, sorted_unique_names(models.clone()));
+
+        for model in models {
+            assert!(
+                resolve_embedding_model(&model).is_ok(),
+                "advertised embedding model did not resolve: {model}"
+            );
+        }
+    }
+
+    #[test]
+    fn advertised_reranker_models_are_sorted_unique_and_resolvable() {
+        let models = supported_reranker_model_names();
+
+        assert_eq!(models, sorted_unique_names(models.clone()));
+
+        for model in models {
+            assert!(
+                resolve_reranker_model(&model).is_ok(),
+                "advertised reranker model did not resolve: {model}"
+            );
+        }
+    }
+
+    #[test]
+    fn canonical_ambiguous_name_prefers_the_non_quantized_model() {
+        assert_eq!(
+            resolve_embedding_model("Xenova/all-MiniLM-L12-v2"),
+            Ok(EmbeddingModel::AllMiniLML12V2)
+        );
+
+        assert_eq!(
+            resolve_embedding_model("onnx-community/embeddinggemma-300m-ONNX"),
+            Ok(EmbeddingModel::EmbeddingGemma300M)
+        );
+    }
+
+    #[test]
+    fn quantized_model_detection_includes_numbered_variants() {
+        assert!(is_quantized_model(&EmbeddingModel::EmbeddingGemma300MQ));
+        assert!(is_quantized_model(&EmbeddingModel::EmbeddingGemma300MQ4));
+        assert!(!is_quantized_model(&EmbeddingModel::EmbeddingGemma300M));
+    }
+}

@@ -16,6 +16,4 @@ erl_crash.dump
 /config/
 # Rust binary artifacts
 /target/
-
-# Rust binary artifacts
-/target/
+/*.tar

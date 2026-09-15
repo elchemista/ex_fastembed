@@ -15,12 +15,18 @@ defmodule ExFastembed do
 
   @doc """
   Returns text embedding model names accepted by `load/1`.
+
+  Includes repository names, explicit FastEmbed variant names, and legacy aliases.
+  Names are matched case-insensitively.
   """
   @spec embed_models() :: [String.t()]
   def embed_models, do: Native.embed_models()
 
   @doc """
   Returns reranker model names accepted by `load_reranker/1`.
+
+  Includes repository names, explicit FastEmbed variant names, and legacy aliases.
+  Names are matched case-insensitively.
   """
   @spec reranker_models() :: [String.t()]
   def reranker_models, do: Native.reranker_models()
@@ -104,14 +110,21 @@ defmodule ExFastembed do
   def rerank(_query, _documents, _return_docs),
     do: {:error, "Invalid input: expected a string, a list of strings, and a boolean"}
 
-  @spec validate_string_list([term()], String.t()) :: :ok | error()
+  @spec validate_string_list(term(), String.t()) :: :ok | error()
   defp validate_string_list(values, message) do
-    if Enum.all?(values, &(is_binary(&1) and String.valid?(&1))) do
+    if valid_string_list?(values) do
       :ok
     else
       {:error, "Invalid input: #{message}"}
     end
   end
+
+  defp valid_string_list?([]), do: true
+
+  defp valid_string_list?([value | rest]) when is_binary(value),
+    do: String.valid?(value) and valid_string_list?(rest)
+
+  defp valid_string_list?(_values), do: false
 
   @spec validate_string(binary(), String.t()) :: :ok | error()
   defp validate_string(value, message) do

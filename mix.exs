@@ -41,7 +41,8 @@ defmodule ExFastembed.MixProject do
     [
       name: "ex_fastembed",
       maintainers: ["Yuriy Zhar"],
-      files: ~w(mix.exs README.md lib native test LICENSE checksum-*.exs .formatter.exs),
+      files:
+        ~w(mix.exs README.md lib native/ex_fastembed/src native/ex_fastembed/Cargo.toml native/ex_fastembed/Cargo.lock native/ex_fastembed/.cargo scripts test LICENSE .formatter.exs),
       licenses: ["Apache-2.0"],
       links: %{
         "GitHub" => "https://github.com/elchemista/ex_fastembed"
@@ -55,8 +56,6 @@ defmodule ExFastembed.MixProject do
       {:rustler, "~> 0.38.0"},
       {:credo, "~> 1.6", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false},
-      # {:rustler_precompiled, "~> 0.8"},
-      # Documentation Provider
       {:ex_doc, "~> 0.40.3", only: [:dev, :test], optional: true, runtime: false}
     ]
   end

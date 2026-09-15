@@ -46,7 +46,7 @@ compiler commands blocked. It does not depend on an unpublished release URL.
 
 ## 3. Publish the native release
 
-After reviewing and committing the release source, create and push `v0.1.1`.
+After reviewing and committing the release source, create and push `v0.1.0`.
 ExDoc source links use this tag. The tag must match the Mix and Cargo versions.
 The tag workflow builds the full matrix, generates its checksum map, and attaches
 both to the GitHub release.
@@ -65,7 +65,7 @@ EX_FASTEMBED_BUILD=1 mix hex.publish --dry-run --yes
 ```
 
 The dry run builds the package and HexDocs without uploading. Inspect
-`ex_fastembed-0.1.1.tar` and `doc/index.html`. Confirm that the package includes
+`ex_fastembed-0.1.0.tar` and `doc/index.html`. Confirm that the package includes
 all six checksum entries, the guides, changelog, and native source files.
 
 Check the active account with `mix hex.user whoami`; authenticate as `elchemista`

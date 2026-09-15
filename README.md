@@ -8,7 +8,7 @@ Local text embeddings and document reranking for Elixir, powered by
 Add the dependency to `mix.exs`:
 
 ```elixir
-{:ex_fastembed, "~> 0.1.1"}
+{:ex_fastembed, "~> 0.1.0"}
 ```
 
 Requires **Elixir 1.18+**. Precompiled NIFs support Linux x86_64/aarch64

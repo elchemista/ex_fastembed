@@ -1,6 +1,6 @@
 [package]
 name = "ex_fastembed"
-version = "0.1.1"
+version = "0.1.0"
 authors = ["Yuriy Zhar"]
 license = "Apache-2.0"
 repository = "https://github.com/elchemista/ex_fastembed"

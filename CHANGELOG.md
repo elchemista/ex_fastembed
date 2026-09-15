@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.1
+## 0.1.0
 
 First Hex release, with local text embeddings and document reranking.
 
@@ -14,7 +14,3 @@ First Hex release, with local text embeddings and document reranking.
 - Document model sharing, cache configuration, replacement, and reranking results.
 - Generate the model catalog from the bundled dependency and verify API docs/specs.
 - Add coverage thresholds, inference tests, package validation, and current CI targets.
-
-## 0.1.0
-
-Initial Git release of the FastEmbed Rustler wrapper.

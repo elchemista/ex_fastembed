@@ -66,6 +66,10 @@ Precompiled NIFs target Linux x86_64/aarch64 with glibc and macOS Apple Silicon,
 for NIF ABI versions 2.15 and 2.16. RustlerPrecompiled selects the compatible ABI
 and verifies the downloaded archive against `checksum-Elixir.ExFastembed.Native.exs`.
 
+Linux archives are built on Ubuntu 24.04 and require glibc 2.38+, OpenSSL 3
+(`libssl.so.3` and `libcrypto.so.3`), and `libstdc++` with `GLIBCXX_3.4.31` or newer. Older distributions
+need a source build with a compatible ONNX Runtime configuration.
+
 Set `EX_FASTEMBED_BUILD=1` to compile with Rustler. Source builds require Rust
 1.91+ and a C/C++ compiler. On Debian/Ubuntu, install `clang`, `libssl-dev`, and
 `pkg-config`; on macOS, use `xcode-select --install`. Source builds download

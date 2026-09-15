@@ -52,4 +52,6 @@ jobs:
         working-directory: native/ex_fastembed
       - name: Check Hex package and documentation
         if: matrix.rust == 'stable' && hashFiles('checksum-Elixir.ExFastembed.Native.exs') != ''
-        run: mix hex.publish --dry-run --yes
+        run: |
+          elixir scripts/checksums.exs --check
+          mix hex.publish --dry-run --yes

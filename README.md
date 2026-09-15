@@ -11,9 +11,9 @@ Add the dependency to `mix.exs`:
 {:ex_fastembed, "~> 0.1.1"}
 ```
 
-Requires **Elixir 1.18+**. On Linux x86_64/aarch64 with glibc and macOS Apple
-Silicon, installation downloads a precompiled NIF and verifies its SHA-256
-checksum. Rust is not needed on these targets.
+Requires **Elixir 1.18+**. Precompiled NIFs support Linux x86_64/aarch64
+(glibc 2.38+, OpenSSL 3, such as Ubuntu 24.04) and macOS Apple Silicon.
+Installation verifies their SHA-256 checksums; Rust is not needed on these targets.
 
 ```bash
 mix deps.get

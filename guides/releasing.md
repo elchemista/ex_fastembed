@@ -46,7 +46,9 @@ compiler commands blocked. It does not depend on an unpublished release URL.
 
 ## 3. Publish the native release
 
-After reviewing and committing the release source, create and push `v0.1.0`.
+After reviewing and committing the release source, point `v0.1.0` at the release
+commit and push that tag. Verify an existing local tag points to this commit
+before pushing it.
 ExDoc source links use this tag. The tag must match the Mix and Cargo versions.
 The tag workflow builds the full matrix, generates its checksum map, and attaches
 both to the GitHub release.

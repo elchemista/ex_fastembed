@@ -66,17 +66,25 @@ jobs:
           toolchain: stable
           targets: ${{ matrix.job.target }}
 
-      - name: Build the project
+      - name: Build and archive the native NIF
         id: build-crate
-        uses: philss/rustler-precompiled-action@v1.1.5
-        with:
-          project-name: ex_fastembed
-          project-version: ${{ env.PROJECT_VERSION }}
-          target: ${{ matrix.job.target }}
-          nif-version: ${{ matrix.nif }}
-          use-cross: false
-          project-dir: "native/ex_fastembed"
-          cargo-args: "--locked"
+        working-directory: native/ex_fastembed
+        shell: bash
+        env:
+          NIF_TARGET: ${{ matrix.job.target }}
+          NIF_VERSION: ${{ matrix.nif }}
+        run: |
+          cargo build --release --locked --target "$NIF_TARGET" \
+            --no-default-features --features "nif_version_${NIF_VERSION//./_}"
+          extension=so
+          if [[ "$NIF_TARGET" == *apple-darwin ]]; then
+            extension=dylib
+          fi
+          library="libex_fastembed-v$PROJECT_VERSION-nif-$NIF_VERSION-$NIF_TARGET.so"
+          cp "target/$NIF_TARGET/release/libex_fastembed.$extension" "$RUNNER_TEMP/$library"
+          tar -czf "$GITHUB_WORKSPACE/$library.tar.gz" -C "$RUNNER_TEMP" "$library"
+          echo "file-name=$library.tar.gz" >> "$GITHUB_OUTPUT"
+          echo "file-path=$library.tar.gz" >> "$GITHUB_OUTPUT"
 
       - name: Artifact upload
         uses: actions/upload-artifact@v7.0.1

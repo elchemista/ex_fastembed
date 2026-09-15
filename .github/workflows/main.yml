@@ -5,12 +5,13 @@ on:
   release:
     types: [published]
   push:
-    branches: ['prepare-hex-release']
+    branches: ['**']
     paths:
       - 'native/**'
       - 'lib/**'
       - 'mix.exs'
       - 'scripts/checksums.exs'
+      - 'scripts/nif_smoke.exs'
       - '.github/workflows/main.yml'
 
 permissions:
@@ -29,10 +30,11 @@ jobs:
           - { target: aarch64-unknown-linux-gnu, os: ubuntu-24.04-arm }
           - { target: aarch64-apple-darwin, os: macos-15 }
           - { target: x86_64-unknown-linux-gnu, os: ubuntu-24.04 }
+          - { target: x86_64-pc-windows-msvc, os: windows-2022 }
 
     env:
-      CC: clang
-      CXX: clang++
+      CC: ${{ matrix.job.os == 'windows-2022' && 'cl' || 'clang' }}
+      CXX: ${{ matrix.job.os == 'windows-2022' && 'cl' || 'clang++' }}
 
     steps:
       - name: Checkout source code
@@ -76,15 +78,34 @@ jobs:
         run: |
           cargo build --release --locked --target "$NIF_TARGET" \
             --no-default-features --features "nif_version_${NIF_VERSION//./_}"
-          extension=so
-          if [[ "$NIF_TARGET" == *apple-darwin ]]; then
-            extension=dylib
-          fi
-          library="libex_fastembed-v$PROJECT_VERSION-nif-$NIF_VERSION-$NIF_TARGET.so"
-          cp "target/$NIF_TARGET/release/libex_fastembed.$extension" "$RUNNER_TEMP/$library"
+          case "$NIF_TARGET" in
+            *windows*) source_library=ex_fastembed.dll; prefix=; extension=dll ;;
+            *apple-darwin) source_library=libex_fastembed.dylib; prefix=lib; extension=so ;;
+            *) source_library=libex_fastembed.so; prefix=lib; extension=so ;;
+          esac
+          library="${prefix}ex_fastembed-v$PROJECT_VERSION-nif-$NIF_VERSION-$NIF_TARGET.$extension"
+          cp "target/$NIF_TARGET/release/$source_library" "$RUNNER_TEMP/$library"
           tar -czf "$GITHUB_WORKSPACE/$library.tar.gz" -C "$RUNNER_TEMP" "$library"
-          echo "file-name=$library.tar.gz" >> "$GITHUB_OUTPUT"
-          echo "file-path=$library.tar.gz" >> "$GITHUB_OUTPUT"
+          {
+            echo "file-name=$library.tar.gz"
+            echo "file-path=$library.tar.gz"
+            echo "library-path=$RUNNER_TEMP/$library"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Install BEAM for the Windows runtime check
+        if: runner.os == 'Windows'
+        uses: erlef/setup-beam@v1.24.1
+        with:
+          elixir-version: '1.18'
+          otp-version: '27'
+
+      - name: Verify Windows NIF loading and embedding inference
+        if: runner.os == 'Windows'
+        shell: bash
+        env:
+          NIF_PATH: ${{ steps.build-crate.outputs.library-path }}
+          FASTEMBED_CACHE_DIR: ${{ runner.temp }}/fastembed-models
+        run: elixir scripts/nif_smoke.exs "$NIF_PATH"
 
       - name: Artifact upload
         uses: actions/upload-artifact@v7.0.1
@@ -105,7 +126,7 @@ jobs:
           otp-version: '27'
       - uses: actions/download-artifact@v8.0.1
         with:
-          pattern: 'libex_fastembed-*.tar.gz'
+          pattern: '*ex_fastembed-*.tar.gz'
           path: release-artifacts
           merge-multiple: true
       - name: Generate and validate the complete checksum map

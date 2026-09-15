@@ -16,7 +16,7 @@ tar -xzf "$smoke_root/archive/contents.tar.gz" -C "$smoke_root/package"
 test -f "$smoke_root/package/checksum-Elixir.ExFastembed.Native.exs"
 test -f "$smoke_root/package/native/ex_fastembed/Cargo.lock"
 test -f "$smoke_root/package/guides/models.md"
-if tar -tzf "$smoke_root/archive/contents.tar.gz" | rg '(^|/)(target|_build|deps|priv)(/|$)|\.so$'; then
+if tar -tzf "$smoke_root/archive/contents.tar.gz" | rg '(^|/)(target|_build|deps|priv)(/|$)|\.(so|dll|dylib)$'; then
   echo 'Unexpected build artifacts in Hex package' >&2
   exit 1
 fi

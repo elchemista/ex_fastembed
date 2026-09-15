@@ -62,7 +62,8 @@ models. Optional sparse, image, and Candle model APIs are not exposed.
 
 ## Platforms
 
-Precompiled NIFs target Linux x86_64/aarch64 with glibc and macOS Apple Silicon,
+Precompiled NIFs target Linux x86_64/aarch64 with glibc, macOS Apple Silicon,
+and Windows x86_64 with MSVC,
 for NIF ABI versions 2.15 and 2.16. RustlerPrecompiled selects the compatible ABI
 and verifies the downloaded archive against `checksum-Elixir.ExFastembed.Native.exs`.
 
@@ -70,12 +71,18 @@ Linux archives are built on Ubuntu 24.04 and require glibc 2.38+, OpenSSL 3
 (`libssl.so.3` and `libcrypto.so.3`), and `libstdc++` with `GLIBCXX_3.4.31` or newer. Older distributions
 need a source build with a compatible ONNX Runtime configuration.
 
+Windows archives contain `.dll` files and are built and tested on Windows Server
+2022. They require a current Windows 10/11 or Windows Server installation with
+DirectML and the Microsoft Visual C++ 2015–2022 x64 runtime. The CI loads each
+Windows NIF ABI and runs an actual embedding inference before uploading it.
+
 Set `EX_FASTEMBED_BUILD=1` to compile with Rustler. Source builds require Rust
 1.91+ and a C/C++ compiler. On Debian/Ubuntu, install `clang`, `libssl-dev`, and
-`pkg-config`; on macOS, use `xcode-select --install`. Source builds download
+`pkg-config`; on macOS, use `xcode-select --install`; on Windows, use Visual Studio
+Build Tools with the C++ workload and the MSVC Rust toolchain. Source builds download
 ONNX Runtime during compilation.
 
-macOS Intel, musl, ARMv7, and RISC-V require a compatible ONNX Runtime installation
+Windows GNU, macOS Intel, musl, ARMv7, and RISC-V require a compatible ONNX Runtime installation
 supplied separately. Follow the [ort linking documentation](https://ort.pyke.io/setup/linking)
 when configuring a custom runtime. GPU providers are not enabled by default.
 

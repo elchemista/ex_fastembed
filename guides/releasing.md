@@ -23,10 +23,11 @@ static analysis, and a 90% Elixir line coverage floor. Native coverage has an
 ## 2. Build the precompiled NIFs
 
 Run **Actions → Build precompiled NIFs → Run workflow** on the release branch.
-The preparation branch also starts this workflow when pushed. Manual and branch
+Changes to native code, the loader, or the build workflow also start it on branch pushes. Manual and branch
 runs upload artifacts without publishing a GitHub release.
 
-The matrix contains three targets and NIF ABI versions 2.15 and 2.16. Its final
+The matrix contains four targets (Linux x86_64/aarch64, macOS Apple Silicon,
+and Windows x86_64 MSVC) and NIF ABI versions 2.15 and 2.16. Its final
 job validates that every archive is present and generates
 `checksum-Elixir.ExFastembed.Native.exs` using SHA-256 hashes of the actual archives.
 The `nif-release` artifact contains both the archives and the checksum map.
@@ -52,7 +53,7 @@ If the tag already exists, verify that it points to the intended release commit.
 ExDoc source links use this tag, which must match the Mix and Cargo versions.
 
 Publishing the release starts the full NIF matrix. The final job generates the
-checksum map and attaches it and all six archives to that same GitHub release.
+checksum map and attaches it and all eight archives to that same GitHub release.
 Saving a draft or pushing a tag alone does not start the release build.
 
 A rebuild can change archive hashes. Download the **release run's** `nif-release`
@@ -75,7 +76,7 @@ EX_FASTEMBED_BUILD=1 mix hex.publish --dry-run --yes
 
 The dry run builds the package and HexDocs without uploading. Inspect
 `ex_fastembed-0.1.0.tar` and `doc/index.html`. Confirm that the package includes
-all six checksum entries, the guides, changelog, and native source files.
+all eight checksum entries, the guides, changelog, and native source files.
 
 Then publish both the package and docs:
 

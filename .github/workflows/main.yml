@@ -68,6 +68,22 @@ jobs:
           toolchain: stable
           targets: ${{ matrix.job.target }}
 
+      - name: Initialize the Windows C++ build environment
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1.13.0
+        with:
+          arch: x64
+
+      - name: Resolve the MSVC compiler and linker
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $compiler = (Get-Command cl.exe -ErrorAction Stop).Source
+          $linker = (Get-Command link.exe -ErrorAction Stop).Source
+          "CC=$compiler" >> $env:GITHUB_ENV
+          "CXX=$compiler" >> $env:GITHUB_ENV
+          "CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_LINKER=$linker" >> $env:GITHUB_ENV
+
       - name: Build and archive the native NIF
         id: build-crate
         working-directory: native/ex_fastembed
@@ -85,7 +101,7 @@ jobs:
           esac
           library="${prefix}ex_fastembed-v$PROJECT_VERSION-nif-$NIF_VERSION-$NIF_TARGET.$extension"
           cp "target/$NIF_TARGET/release/$source_library" "$RUNNER_TEMP/$library"
-          tar -czf "$GITHUB_WORKSPACE/$library.tar.gz" -C "$RUNNER_TEMP" "$library"
+          tar -czf "../../$library.tar.gz" -C "$RUNNER_TEMP" "$library"
           {
             echo "file-name=$library.tar.gz"
             echo "file-path=$library.tar.gz"

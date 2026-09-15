@@ -67,6 +67,9 @@ and Windows x86_64 with MSVC,
 for NIF ABI versions 2.15 and 2.16. RustlerPrecompiled selects the compatible ABI
 and verifies the downloaded archive against `checksum-Elixir.ExFastembed.Native.exs`.
 
+The ONNX Runtime x86_64 binaries require an x86-64-v3 CPU (AVX2), such as Intel
+Haswell or AMD Ryzen and newer. See the [upstream release notes](https://github.com/pykeio/ort/releases/tag/v2.0.0-rc.12).
+
 Linux archives are built on Ubuntu 24.04 and require glibc 2.38+, OpenSSL 3
 (`libssl.so.3` and `libcrypto.so.3`), and `libstdc++` with `GLIBCXX_3.4.31` or newer. Older distributions
 need a source build with a compatible ONNX Runtime configuration.

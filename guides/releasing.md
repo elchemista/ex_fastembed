@@ -56,10 +56,18 @@ Publishing the release starts the full NIF matrix. The final job generates the
 checksum map and attaches it and all eight archives to that same GitHub release.
 Saving a draft or pushing a tag alone does not start the release build.
 
-A rebuild can change archive hashes. Download the **release run's** `nif-release`
-artifact and regenerate the local checksum map again before building the final
-Hex package. Do not reuse checksums from an earlier build. Commit the generated
-map, then verify the real release download in a fresh consumer without
+A rebuild can change archive hashes. After the release workflow succeeds,
+download all published NIFs and regenerate the checksum map from those exact
+archives:
+
+```bash
+EX_FASTEMBED_BUILD=1 mix rustler_precompiled.download ExFastembed.Native --all
+elixir scripts/checksums.exs --check
+```
+
+Alternatively, download the **release run's** `nif-release` artifact and regenerate
+the map as in step 2. Do not reuse checksums from an earlier build. Commit the
+generated map, then verify the real release download in a fresh consumer without
 `EX_FASTEMBED_BUILD` or a seeded NIF cache.
 
 ## 4. Rehearse and publish Hex

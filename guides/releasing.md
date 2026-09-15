@@ -61,6 +61,11 @@ map, then verify the real release download in a fresh consumer without
 
 ## 4. Rehearse and publish Hex
 
+Build checks require no Hex account: CI runs `mix hex.build` and
+`mix docs --warnings-as-errors`. Hex's publish command requires authentication
+even for a dry run. Check the active account with `mix hex.user whoami` and
+authenticate as `elchemista` with `mix hex.user auth` if needed.
+
 ```bash
 elixir scripts/checksums.exs --check
 EX_FASTEMBED_BUILD=1 mix hex.publish --dry-run --yes
@@ -70,8 +75,7 @@ The dry run builds the package and HexDocs without uploading. Inspect
 `ex_fastembed-0.1.0.tar` and `doc/index.html`. Confirm that the package includes
 all six checksum entries, the guides, changelog, and native source files.
 
-Check the active account with `mix hex.user whoami`; authenticate as `elchemista`
-with `mix hex.user auth` if needed. Then publish both the package and docs:
+Then publish both the package and docs:
 
 ```bash
 mix hex.publish

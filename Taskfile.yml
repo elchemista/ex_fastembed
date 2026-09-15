@@ -62,12 +62,12 @@ tasks:
     cmd: bash scripts/package_smoke.sh
 
   release-check:
-    desc: Run all checks and rehearse Hex publishing locally
+    desc: Run all checks and build the Hex package and documentation
     cmds:
       - task: check
       - task: coverage
       - task: package-smoke
-      - mix hex.publish --dry-run --yes
+      - mix hex.build
 
   dialyzer:
     desc: Run dialyzer

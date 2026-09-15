@@ -50,8 +50,8 @@ jobs:
         working-directory: native/ex_fastembed
       - run: cargo clippy --locked --all-targets --all-features -- -D warnings
         working-directory: native/ex_fastembed
-      - name: Check Hex package and documentation
+      - name: Check Hex package
         if: matrix.rust == 'stable' && hashFiles('checksum-Elixir.ExFastembed.Native.exs') != ''
         run: |
           elixir scripts/checksums.exs --check
-          mix hex.publish --dry-run --yes
+          mix hex.build

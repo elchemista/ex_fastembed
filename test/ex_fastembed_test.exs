@@ -1,6 +1,8 @@
 defmodule ExFastembedTest do
   use ExUnit.Case, async: true
 
+  doctest ExFastembed
+
   describe "embedding model functions" do
     test "embed_models/0 includes legacy names and explicit upstream variants" do
       models = ExFastembed.embed_models()
@@ -64,7 +66,7 @@ defmodule ExFastembedTest do
 
       assert models == Enum.sort_by(models, &{String.downcase(&1), &1})
       assert models == Enum.uniq(models)
-      assert models == documented_models("Reranker Models", "## Development")
+      assert models == documented_models("Reranker Models", "## Updating the catalog")
       assert "BAAI/bge-reranker-base" in models
       assert "BGERerankerBase" in models
       assert "BAAI/bge-reranker-v2-m3" in models
@@ -118,8 +120,8 @@ defmodule ExFastembedTest do
   end
 
   defp documented_models(heading, next_heading) do
-    readme = File.read!(Path.expand("../README.md", __DIR__))
-    [_before, section] = String.split(readme, "### #{heading}", parts: 2)
+    guide = File.read!(Path.expand("../guides/models.md", __DIR__))
+    [_before, section] = String.split(guide, "### #{heading}", parts: 2)
     [section, _after] = String.split(section, next_heading, parts: 2)
 
     ~r/^- `"([^"]+)"`$/m

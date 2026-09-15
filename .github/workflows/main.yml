@@ -1,7 +1,15 @@
 name: Build precompiled NIFs
 
 on:
+  workflow_dispatch:
   push:
+    branches: ['prepare-hex-release']
+    paths:
+      - 'native/**'
+      - 'lib/**'
+      - 'mix.exs'
+      - 'scripts/checksums.exs'
+      - '.github/workflows/main.yml'
     tags:
       - 'v*'
 
@@ -45,6 +53,11 @@ jobs:
         run: |
           project_version=$(awk -F'"' '/^  @version / {print $2; exit}' mix.exs)
           test -n "$project_version"
+          cargo_version=$(awk -F'"' '/^version = / {print $2; exit}' native/ex_fastembed/Cargo.toml)
+          test "$project_version" = "$cargo_version"
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
+            test "$GITHUB_REF_NAME" = "v$project_version"
+          fi
           echo "PROJECT_VERSION=$project_version" >> "$GITHUB_ENV"
 
       - name: Install Rust toolchain
@@ -70,9 +83,39 @@ jobs:
         with:
           name: ${{ steps.build-crate.outputs.file-name }}
           path: ${{ steps.build-crate.outputs.file-path }}
+          if-no-files-found: error
 
-      - name: Publish archives and packages
-        if: startsWith(github.ref, 'refs/tags/')
+  checksums:
+    name: Collect NIF archives and generate checksums
+    runs-on: ubuntu-24.04
+    needs: build_release
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: erlef/setup-beam@v1.24.1
+        with:
+          elixir-version: '1.18'
+          otp-version: '27'
+      - uses: actions/download-artifact@v8.0.1
+        with:
+          pattern: 'libex_fastembed-*.tar.gz'
+          path: release-artifacts
+          merge-multiple: true
+      - name: Generate and validate the complete checksum map
+        run: |
+          elixir scripts/checksums.exs release-artifacts
+          elixir scripts/checksums.exs --check
+      - uses: actions/upload-artifact@v7.0.1
+        with:
+          name: nif-release
+          path: |
+            release-artifacts/*.tar.gz
+            checksum-Elixir.ExFastembed.Native.exs
+          if-no-files-found: error
+      - name: Publish archives and checksum on version tags
+        if: github.ref_type == 'tag'
         uses: softprops/action-gh-release@v3.0.3
         with:
-          files: ${{ steps.build-crate.outputs.file-path }}
+          fail_on_unmatched_files: true
+          files: |
+            release-artifacts/*.tar.gz
+            checksum-Elixir.ExFastembed.Native.exs

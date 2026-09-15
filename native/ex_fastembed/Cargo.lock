@@ -433,10 +433,12 @@ checksum = "d817e038c30374a4bcb22f94d0a8a0e216958d4c3dcde369b1439fec4bdda6e6"
 
 [[package]]
 name = "ex_fastembed"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "fastembed",
+ "hf-hub",
  "rustler",
+ "tempfile",
 ]
 
 [[package]]

@@ -2,7 +2,7 @@ defmodule ExFastembedTest do
   use ExUnit.Case, async: true
 
   describe "embedding model functions" do
-    test "embed_models/0 includes legacy names and upstream v5 additions" do
+    test "embed_models/0 includes legacy names and explicit upstream variants" do
       models = ExFastembed.embed_models()
 
       assert models == Enum.sort_by(models, &{String.downcase(&1), &1})
@@ -10,6 +10,8 @@ defmodule ExFastembedTest do
       assert models == documented_models("Embedding Models", "### Reranker Models")
       assert "BAAI/bge-small-en-v1.5" in models
       assert "BGESmallENV15Q" in models
+      assert "BGESmallENV15" in models
+      assert "EmbeddingGemma300M" in models
       assert "BAAI/bge-m3" in models
       assert "jinaai/jina-embeddings-v2-base-code" in models
       assert "onnx-community/embeddinggemma-300m-ONNX" in models
@@ -43,6 +45,13 @@ defmodule ExFastembedTest do
       assert {:ok, []} == ExFastembed.embed_text([])
     end
 
+    test "embed_text/1 rejects improper lists without raising" do
+      for tail <- [:invalid, "tail", 123] do
+        assert {:error, "Invalid input: texts must be a list of strings"} ==
+                 ExFastembed.embed_text(["doc" | tail])
+      end
+    end
+
     test "embed_text/1 reports when no model has been loaded" do
       assert {:error, "No model loaded. Call load/1 first."} ==
                ExFastembed.embed_text(["document"])
@@ -55,8 +64,9 @@ defmodule ExFastembedTest do
 
       assert models == Enum.sort_by(models, &{String.downcase(&1), &1})
       assert models == Enum.uniq(models)
-      assert models == documented_models("Reranker Models", "## License")
+      assert models == documented_models("Reranker Models", "## Development")
       assert "BAAI/bge-reranker-base" in models
+      assert "BGERerankerBase" in models
       assert "BAAI/bge-reranker-v2-m3" in models
       assert "rozgo/bge-reranker-v2-m3" in models
       assert "jinaai/jina-reranker-v2-base-multiligual" in models
@@ -92,6 +102,13 @@ defmodule ExFastembedTest do
                ExFastembed.rerank("search query", [<<255>>], true)
 
       assert {:ok, []} == ExFastembed.rerank("search query", [], true)
+    end
+
+    test "rerank/3 rejects improper lists without raising" do
+      for tail <- [:invalid, "tail", 123] do
+        assert {:error, "Invalid input: documents must be a list of strings"} ==
+                 ExFastembed.rerank("query", ["doc" | tail], true)
+      end
     end
 
     test "rerank/3 reports when no reranker has been loaded" do

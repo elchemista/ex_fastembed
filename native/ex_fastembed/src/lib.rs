@@ -65,14 +65,11 @@ fn embed_models() -> Vec<String> {
 
 fn supported_embedding_model_names() -> Vec<String> {
     let supported_models = TextEmbedding::list_supported_models();
-    let mut names = Vec::with_capacity(supported_models.len() + LEGACY_EMBEDDING_ALIASES.len());
+    let mut names = Vec::with_capacity(2 * supported_models.len() + LEGACY_EMBEDDING_ALIASES.len());
 
     for model_info in supported_models {
         names.push(model_info.model_code);
-
-        if is_quantized_model(&model_info.model) {
-            names.push(model_info.model.to_string());
-        }
+        names.push(model_info.model.to_string());
     }
 
     names.extend(
@@ -91,10 +88,11 @@ fn reranker_models() -> Vec<String> {
 
 fn supported_reranker_model_names() -> Vec<String> {
     let supported_models = TextRerank::list_supported_models();
-    let mut names = Vec::with_capacity(supported_models.len() + LEGACY_RERANKER_ALIASES.len());
+    let mut names = Vec::with_capacity(2 * supported_models.len() + LEGACY_RERANKER_ALIASES.len());
 
     for model_info in supported_models {
         names.push(model_info.model_code);
+        names.push(format!("{:?}", model_info.model));
     }
 
     names.extend(
@@ -170,10 +168,8 @@ fn rerank(
     let reranker = reranker_slot
         .as_mut()
         .ok_or_else(|| "No reranker loaded. Call load_reranker/1 first.".to_string())?;
-    let document_refs: Vec<&String> = documents.iter().collect();
-
     reranker
-        .rerank(&query, document_refs, return_docs, None)
+        .rerank(query, documents, return_docs, None)
         .map(|results| {
             results
                 .into_iter()
@@ -192,9 +188,7 @@ fn resolve_embedding_model(model_name: &str) -> Result<EmbeddingModel, String> {
     }
 
     if let Ok(model) = model_name.parse::<EmbeddingModel>() {
-        if is_quantized_model(&model) {
-            return Ok(model);
-        }
+        return Ok(model);
     }
 
     TextEmbedding::list_supported_models()
@@ -220,7 +214,10 @@ fn resolve_reranker_model(model_name: &str) -> Result<RerankerModel, String> {
 
     TextRerank::list_supported_models()
         .into_iter()
-        .find(|model_info| model_info.model_code.eq_ignore_ascii_case(model_name))
+        .find(|model_info| {
+            model_info.model_code.eq_ignore_ascii_case(model_name)
+                || format!("{:?}", model_info.model).eq_ignore_ascii_case(model_name)
+        })
         .map(|model_info| model_info.model)
         .ok_or_else(|| format!("Reranker model not recognized: {model_name}"))
 }
@@ -289,6 +286,59 @@ mod tests {
             resolve_embedding_model("onnx-community/embeddinggemma-300m-ONNX"),
             Ok(EmbeddingModel::EmbeddingGemma300M)
         );
+    }
+
+    #[test]
+    fn every_embedding_variant_can_be_selected_explicitly() {
+        let names = supported_embedding_model_names();
+
+        for info in TextEmbedding::list_supported_models() {
+            let name = info.model.to_string();
+            assert!(names.contains(&name));
+            assert_eq!(resolve_embedding_model(&name), Ok(info.model.clone()));
+            assert_eq!(
+                resolve_embedding_model(&name.to_lowercase()),
+                Ok(info.model)
+            );
+        }
+    }
+
+    #[test]
+    fn every_reranker_variant_can_be_selected_explicitly() {
+        let names = supported_reranker_model_names();
+
+        for info in TextRerank::list_supported_models() {
+            let name = format!("{:?}", info.model);
+            assert!(names.contains(&name));
+            assert_eq!(resolve_reranker_model(&name), Ok(info.model.clone()));
+            assert_eq!(resolve_reranker_model(&name.to_lowercase()), Ok(info.model));
+        }
+    }
+
+    #[test]
+    fn legacy_aliases_preserve_their_models_case_insensitively() {
+        for (name, model) in LEGACY_EMBEDDING_ALIASES {
+            assert_eq!(
+                resolve_embedding_model(&name.to_uppercase()),
+                Ok(model.clone())
+            );
+        }
+
+        for (name, model) in LEGACY_RERANKER_ALIASES {
+            assert_eq!(
+                resolve_reranker_model(&name.to_uppercase()),
+                Ok(model.clone())
+            );
+        }
+    }
+
+    #[test]
+    fn all_shared_repositories_prefer_a_non_quantized_variant() {
+        for info in TextEmbedding::list_supported_models() {
+            if !is_quantized_model(&info.model) {
+                assert_eq!(resolve_embedding_model(&info.model_code), Ok(info.model));
+            }
+        }
     }
 
     #[test]

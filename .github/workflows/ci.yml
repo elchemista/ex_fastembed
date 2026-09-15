@@ -1,0 +1,50 @@
+name: Checks
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { elixir: '1.18', otp: '27', rust: '1.91.0' }
+          - { elixir: '1.20', otp: '29', rust: stable }
+    env:
+      CC: clang
+      CXX: clang++
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: erlef/setup-beam@v1.24.1
+        with:
+          elixir-version: ${{ matrix.elixir }}
+          otp-version: ${{ matrix.otp }}
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ matrix.rust }}
+          components: rustfmt, clippy
+      - name: Install system dependencies
+        run: sudo apt-get update && sudo apt-get install -y clang libssl-dev pkg-config
+      - run: mix deps.get --check-locked
+      - run: mix format --check-formatted
+      - run: mix compile --warnings-as-errors
+      - name: Check model documentation and lockfiles
+        run: |
+          mix run scripts/update_models.exs
+          git diff --exit-code -- README.md mix.lock native/ex_fastembed/Cargo.lock
+      - run: mix test
+      - run: mix credo --strict
+      - run: mix dialyzer
+      - run: cargo fmt --check
+        working-directory: native/ex_fastembed
+      - run: cargo test --locked
+        working-directory: native/ex_fastembed
+      - run: cargo clippy --locked --all-targets --all-features -- -D warnings
+        working-directory: native/ex_fastembed

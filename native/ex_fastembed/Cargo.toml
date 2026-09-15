@@ -11,8 +11,13 @@ path = "src/lib.rs"
 crate-type = ["cdylib"]
 
 [dependencies]
-fastembed = { version = "5", default-features = false, features = ["hf-hub-native-tls", "ort-download-binaries-native-tls"] }
-rustler = "0.38.0"
+fastembed = { version = "6.1.0", default-features = false, features = ["hf-hub-native-tls", "ort-download-binaries-native-tls"] }
+rustler = { version = "0.38.0", default-features = false }
+
+[features]
+default = ["nif_version_2_15"]
+nif_version_2_15 = ["rustler/nif_version_2_15"]
+nif_version_2_16 = ["rustler/nif_version_2_16"]
 
 [profile.release]
 codegen-units = 1

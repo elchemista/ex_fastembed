@@ -20,41 +20,28 @@ All public functions must have `@doc` and `@spec`; public types must have
 static analysis, and a 90% Elixir line coverage floor. Native coverage has an
 80% floor and includes real inference through the BEAM.
 
-## 2. Build the precompiled NIFs
-
-Run **Actions → Build precompiled NIFs → Run workflow** on the release branch.
-Changes to native code, the loader, or the build workflow also start it on branch pushes. Manual and branch
-runs upload artifacts without publishing a GitHub release.
-
-The matrix contains four targets (Linux x86_64/aarch64, macOS Apple Silicon,
-and Windows x86_64 MSVC) and NIF ABI versions 2.15 and 2.16. Its final
-job validates that every archive is present and generates
-`checksum-Elixir.ExFastembed.Native.exs` using SHA-256 hashes of the actual archives.
-The `nif-release` artifact contains both the archives and the checksum map.
-
-Download and extract that artifact to `_build/release-artifacts`. If extraction
-creates a nested `release-artifacts` directory, move its archives to the top level.
-Regenerate and validate the local checksum file from those exact archives:
-
-```bash
-elixir scripts/checksums.exs _build/release-artifacts
-elixir scripts/checksums.exs --check
-bash scripts/package_smoke.sh
-```
-
-The smoke test consumes the Hex archive and cached precompiled NIFs with Rust
-compiler commands blocked. It does not depend on an unpublished release URL.
-
-## 3. Publish the native release
+## 2. Publish the native release
 
 Commit and push the release source, then merge it into `master`. On GitHub,
 create and publish the release with tag `v0.1.0` targeting that updated commit.
 If the tag already exists, verify that it points to the intended release commit.
 ExDoc source links use this tag, which must match the Mix and Cargo versions.
 
-Publishing the release starts the full NIF matrix. The final job generates the
-checksum map and attaches it and all eight archives to that same GitHub release.
-Saving a draft or pushing a tag alone does not start the release build.
+The **Build precompiled NIFs** workflow runs only when a GitHub release is
+published. Branch pushes and pull requests run the separate **Checks** workflow.
+Saving a draft or pushing a tag alone does not start a NIF release build.
+
+The release workflow first checks that the tag is exactly `v0.1.0` and matches
+the Mix and Cargo versions. A tag named `0.1.0` is invalid because the NIF download
+URLs include the `v` prefix. This check runs before any matrix build starts.
+
+The matrix contains four targets (Linux x86_64/aarch64, macOS Apple Silicon,
+and Windows x86_64 MSVC) and NIF ABI versions 2.15 and 2.16. Its final job validates
+all eight archives, generates `checksum-Elixir.ExFastembed.Native.exs` using their
+SHA-256 hashes, and attaches everything to the GitHub release. The `nif-release`
+artifact contains the same archives and checksum map.
+
+## 3. Update and verify checksums
 
 A rebuild can change archive hashes. After the release workflow succeeds,
 download all published NIFs and regenerate the checksum map from those exact
@@ -65,9 +52,19 @@ EX_FASTEMBED_BUILD=1 mix rustler_precompiled.download ExFastembed.Native --all
 elixir scripts/checksums.exs --check
 ```
 
-Alternatively, download the **release run's** `nif-release` artifact and regenerate
-the map as in step 2. Do not reuse checksums from an earlier build. Commit the
-generated map, then verify the real release download in a fresh consumer without
+For a package smoke test, extract the release run's `nif-release` artifact to
+`_build/release-artifacts`. If extraction creates a nested `release-artifacts`
+directory, move its archives to the top level. Then run:
+
+```bash
+elixir scripts/checksums.exs _build/release-artifacts
+elixir scripts/checksums.exs --check
+bash scripts/package_smoke.sh
+```
+
+The smoke test loads the packaged NIF with Rust compiler commands blocked.
+Do not reuse checksums from an earlier build. Commit the generated map, then
+verify the real release download in a fresh consumer without
 `EX_FASTEMBED_BUILD` or a seeded NIF cache.
 
 ## 4. Rehearse and publish Hex

@@ -1,26 +1,42 @@
 name: Build precompiled NIFs
 
 on:
-  workflow_dispatch:
   release:
     types: [published]
-  push:
-    branches: ['**']
-    paths:
-      - 'native/**'
-      - 'lib/**'
-      - 'mix.exs'
-      - 'scripts/checksums.exs'
-      - 'scripts/nif_smoke.exs'
-      - '.github/workflows/main.yml'
 
 permissions:
   contents: write
 
 jobs:
+  validate_release:
+    name: Validate release tag and project version
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - name: Verify release version
+        id: version
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          project_version=$(awk -F'"' '/^  @version / {print $2; exit}' mix.exs)
+          cargo_version=$(awk -F'"' '/^version = / {print $2; exit}' native/ex_fastembed/Cargo.toml)
+          if [ -z "$project_version" ] || [ "$project_version" != "$cargo_version" ]; then
+            echo "::error::Mix version '$project_version' does not match Cargo version '$cargo_version'."
+            exit 1
+          fi
+          if [ "$RELEASE_TAG" != "v$project_version" ]; then
+            echo "::error::Release tag '$RELEASE_TAG' must be 'v$project_version'. NIF download URLs use this exact tag."
+            exit 1
+          fi
+          echo "version=$project_version" >> "$GITHUB_OUTPUT"
+
   build_release:
     name: NIF ${{ matrix.nif }} - ${{ matrix.job.target }} (${{ matrix.job.os }})
     runs-on: ${{ matrix.job.os }}
+    needs: validate_release
     strategy:
       fail-fast: false
       matrix:
@@ -33,6 +49,7 @@ jobs:
           - { target: x86_64-pc-windows-msvc, os: windows-2022 }
 
     env:
+      PROJECT_VERSION: ${{ needs.validate_release.outputs.version }}
       CC: ${{ matrix.job.os == 'windows-2022' && 'cl' || 'clang' }}
       CXX: ${{ matrix.job.os == 'windows-2022' && 'cl' || 'clang++' }}
 
@@ -49,18 +66,6 @@ jobs:
             clang \
             libssl-dev \
             pkg-config
-
-      - name: Extract project version
-        shell: bash
-        run: |
-          project_version=$(awk -F'"' '/^  @version / {print $2; exit}' mix.exs)
-          test -n "$project_version"
-          cargo_version=$(awk -F'"' '/^version = / {print $2; exit}' native/ex_fastembed/Cargo.toml)
-          test "$project_version" = "$cargo_version"
-          if [ "$GITHUB_REF_TYPE" = tag ]; then
-            test "$GITHUB_REF_NAME" = "v$project_version"
-          fi
-          echo "PROJECT_VERSION=$project_version" >> "$GITHUB_ENV"
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable

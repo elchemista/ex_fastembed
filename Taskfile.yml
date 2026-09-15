@@ -4,6 +4,9 @@ vars:
   PROJECT_NAME: ExFastembed
   PROJECT_DIR_NAME: ex_fastembed
 
+env:
+  EX_FASTEMBED_BUILD: '1'
+
 tasks:
   compile:
     desc: Compile sources (with Rust)
@@ -20,17 +23,17 @@ tasks:
         ignore_error: true
 
   test:
-    desc: Run tests (with Rust)
+    desc: Run ExUnit, doctests, and Elixir coverage
     cmds:
-      - mix test --trace
+      - mix test --cover
 
   integration-test:
     desc: Run model inference tests (downloads models on first use)
     cmds:
-      - mix test --only integration --trace
+      - mix test --include integration --cover
 
   models:
-    desc: Regenerate the supported model lists in README
+    desc: Regenerate the supported model guide
     cmd: mix run scripts/update_models.exs
 
   check:
@@ -44,6 +47,27 @@ tasks:
       - task: rust-format
       - task: rust-test
       - task: clippy
+      - task: docs
+
+  docs:
+    desc: Build HexDocs with warnings denied
+    cmd: mix docs --warnings-as-errors
+
+  coverage:
+    desc: Measure Elixir and Rust coverage with real inference
+    cmd: bash scripts/coverage.sh
+
+  package-smoke:
+    desc: Build and test the Hex archive in an isolated consumer
+    cmd: bash scripts/package_smoke.sh
+
+  release-check:
+    desc: Run all checks and build the Hex package and documentation
+    cmds:
+      - task: check
+      - task: coverage
+      - task: package-smoke
+      - mix hex.build
 
   dialyzer:
     desc: Run dialyzer

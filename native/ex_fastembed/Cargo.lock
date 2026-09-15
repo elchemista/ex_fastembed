@@ -436,7 +436,9 @@ name = "ex_fastembed"
 version = "0.1.0"
 dependencies = [
  "fastembed",
+ "hf-hub",
  "rustler",
+ "tempfile",
 ]
 
 [[package]]

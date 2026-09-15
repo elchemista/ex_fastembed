@@ -20,6 +20,7 @@ jobs:
     env:
       CC: clang
       CXX: clang++
+      EX_FASTEMBED_BUILD: '1'
     steps:
       - uses: actions/checkout@v7.0.1
       - uses: erlef/setup-beam@v1.24.1
@@ -38,13 +39,19 @@ jobs:
       - name: Check model documentation and lockfiles
         run: |
           mix run scripts/update_models.exs
-          git diff --exit-code -- README.md mix.lock native/ex_fastembed/Cargo.lock
-      - run: mix test
+          git diff --exit-code -- guides/models.md mix.lock native/ex_fastembed/Cargo.lock
+      - run: mix test --cover
       - run: mix credo --strict
       - run: mix dialyzer
+      - run: mix docs --warnings-as-errors
       - run: cargo fmt --check
         working-directory: native/ex_fastembed
       - run: cargo test --locked
         working-directory: native/ex_fastembed
       - run: cargo clippy --locked --all-targets --all-features -- -D warnings
         working-directory: native/ex_fastembed
+      - name: Check Hex package
+        if: matrix.rust == 'stable' && hashFiles('checksum-Elixir.ExFastembed.Native.exs') != ''
+        run: |
+          elixir scripts/checksums.exs --check
+          mix hex.build

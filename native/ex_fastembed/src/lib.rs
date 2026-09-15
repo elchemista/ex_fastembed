@@ -3,6 +3,8 @@ use fastembed::{
 };
 use std::sync::{Mutex, OnceLock};
 
+mod cache;
+
 static EMBED_MODEL: OnceLock<Mutex<Option<TextEmbedding>>> = OnceLock::new();
 static RERANKER: OnceLock<Mutex<Option<TextRerank>>> = OnceLock::new();
 
@@ -105,13 +107,20 @@ fn supported_reranker_model_names() -> Vec<String> {
 }
 
 #[rustler::nif(schedule = "DirtyCpu")]
-fn load(model_name: String) -> Result<i64, String> {
+fn load(model_name: String, cache_dir: String) -> Result<i64, String> {
     let model = resolve_embedding_model(&model_name)?;
     let info = TextEmbedding::get_model_info(&model)
         .map_err(|_| format!("No recognized info for {model_name}"))?;
     let dimension = info.dim as i64;
+    let cache_dir = cache::prepare_model_files(
+        cache_dir,
+        &info.model_code,
+        &info.model_file,
+        &info.additional_files,
+    )?;
     let text_embedding =
-        TextEmbedding::try_new(TextInitOptions::new(model)).map_err(|error| error.to_string())?;
+        TextEmbedding::try_new(TextInitOptions::new(model).with_cache_dir(cache_dir))
+            .map_err(|error| error.to_string())?;
     let model_slot = EMBED_MODEL.get_or_init(|| Mutex::new(None));
     let mut model_slot = model_slot.lock().map_err(|error| error.to_string())?;
 
@@ -138,11 +147,21 @@ fn embed_text(texts: Vec<String>) -> Result<Vec<Vec<f32>>, String> {
 }
 
 #[rustler::nif(schedule = "DirtyCpu")]
-fn load_reranker(model_name: String) -> Result<bool, String> {
+fn load_reranker(model_name: String, cache_dir: String) -> Result<bool, String> {
     let model = resolve_reranker_model(&model_name)?;
-    let reranker =
-        TextRerank::try_new(RerankInitOptions::new(model).with_show_download_progress(true))
-            .map_err(|error| error.to_string())?;
+    let info = TextRerank::get_model_info(&model);
+    let cache_dir = cache::prepare_model_files(
+        cache_dir,
+        &info.model_code,
+        &info.model_file,
+        &info.additional_files,
+    )?;
+    let reranker = TextRerank::try_new(
+        RerankInitOptions::new(model)
+            .with_cache_dir(cache_dir)
+            .with_show_download_progress(true),
+    )
+    .map_err(|error| error.to_string())?;
     let reranker_slot = RERANKER.get_or_init(|| Mutex::new(None));
     let mut reranker_slot = reranker_slot.lock().map_err(|error| error.to_string())?;
 
@@ -244,107 +263,4 @@ fn is_quantized_model(model: &EmbeddingModel) -> bool {
 rustler::init!("Elixir.ExFastembed.Native");
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn advertised_embedding_models_are_sorted_unique_and_resolvable() {
-        let models = supported_embedding_model_names();
-
-        assert_eq!(models, sorted_unique_names(models.clone()));
-
-        for model in models {
-            assert!(
-                resolve_embedding_model(&model).is_ok(),
-                "advertised embedding model did not resolve: {model}"
-            );
-        }
-    }
-
-    #[test]
-    fn advertised_reranker_models_are_sorted_unique_and_resolvable() {
-        let models = supported_reranker_model_names();
-
-        assert_eq!(models, sorted_unique_names(models.clone()));
-
-        for model in models {
-            assert!(
-                resolve_reranker_model(&model).is_ok(),
-                "advertised reranker model did not resolve: {model}"
-            );
-        }
-    }
-
-    #[test]
-    fn canonical_ambiguous_name_prefers_the_non_quantized_model() {
-        assert_eq!(
-            resolve_embedding_model("Xenova/all-MiniLM-L12-v2"),
-            Ok(EmbeddingModel::AllMiniLML12V2)
-        );
-
-        assert_eq!(
-            resolve_embedding_model("onnx-community/embeddinggemma-300m-ONNX"),
-            Ok(EmbeddingModel::EmbeddingGemma300M)
-        );
-    }
-
-    #[test]
-    fn every_embedding_variant_can_be_selected_explicitly() {
-        let names = supported_embedding_model_names();
-
-        for info in TextEmbedding::list_supported_models() {
-            let name = info.model.to_string();
-            assert!(names.contains(&name));
-            assert_eq!(resolve_embedding_model(&name), Ok(info.model.clone()));
-            assert_eq!(
-                resolve_embedding_model(&name.to_lowercase()),
-                Ok(info.model)
-            );
-        }
-    }
-
-    #[test]
-    fn every_reranker_variant_can_be_selected_explicitly() {
-        let names = supported_reranker_model_names();
-
-        for info in TextRerank::list_supported_models() {
-            let name = format!("{:?}", info.model);
-            assert!(names.contains(&name));
-            assert_eq!(resolve_reranker_model(&name), Ok(info.model.clone()));
-            assert_eq!(resolve_reranker_model(&name.to_lowercase()), Ok(info.model));
-        }
-    }
-
-    #[test]
-    fn legacy_aliases_preserve_their_models_case_insensitively() {
-        for (name, model) in LEGACY_EMBEDDING_ALIASES {
-            assert_eq!(
-                resolve_embedding_model(&name.to_uppercase()),
-                Ok(model.clone())
-            );
-        }
-
-        for (name, model) in LEGACY_RERANKER_ALIASES {
-            assert_eq!(
-                resolve_reranker_model(&name.to_uppercase()),
-                Ok(model.clone())
-            );
-        }
-    }
-
-    #[test]
-    fn all_shared_repositories_prefer_a_non_quantized_variant() {
-        for info in TextEmbedding::list_supported_models() {
-            if !is_quantized_model(&info.model) {
-                assert_eq!(resolve_embedding_model(&info.model_code), Ok(info.model));
-            }
-        }
-    }
-
-    #[test]
-    fn quantized_model_detection_includes_numbered_variants() {
-        assert!(is_quantized_model(&EmbeddingModel::EmbeddingGemma300MQ));
-        assert!(is_quantized_model(&EmbeddingModel::EmbeddingGemma300MQ4));
-        assert!(!is_quantized_model(&EmbeddingModel::EmbeddingGemma300M));
-    }
-}
+mod tests;

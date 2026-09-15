@@ -2,11 +2,15 @@ name: Checks
 
 on:
   push:
-    branches: ['**']
+    branches: ['master']
   pull_request:
 
 permissions:
   contents: read
+
+concurrency:
+  group: checks-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   check:
@@ -21,9 +25,11 @@ jobs:
       CC: clang
       CXX: clang++
       EX_FASTEMBED_BUILD: '1'
+      ORT_CACHE_DIR: ${{ github.workspace }}/.ort-cache
     steps:
       - uses: actions/checkout@v7.0.1
       - uses: erlef/setup-beam@v1.24.1
+        id: beam
         with:
           elixir-version: ${{ matrix.elixir }}
           otp-version: ${{ matrix.otp }}
@@ -33,6 +39,24 @@ jobs:
           components: rustfmt, clippy
       - name: Install system dependencies
         run: sudo apt-get update && sudo apt-get install -y clang libssl-dev pkg-config
+      - name: Cache Rust dependencies and ONNX Runtime
+        uses: Swatinem/rust-cache@v2.9.2
+        with:
+          workspaces: native/ex_fastembed
+          cache-directories: .ort-cache
+      - name: Cache Mix dependencies and Dialyzer PLTs
+        uses: actions/cache@v6.1.0
+        with:
+          path: |
+            deps
+            _build/*/lib/*
+            !_build/*/lib/ex_fastembed
+            !_build/*/lib/ex_fastembed/**
+            _build/*/*.plt*
+            ~/.mix/*.plt*
+          key: mix-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.beam.outputs.otp-version }}-${{ steps.beam.outputs.elixir-version }}-${{ hashFiles('mix.lock', 'mix.exs') }}
+          restore-keys: |
+            mix-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.beam.outputs.otp-version }}-${{ steps.beam.outputs.elixir-version }}-
       - run: mix deps.get --check-locked
       - run: mix format --check-formatted
       - run: mix compile --warnings-as-errors

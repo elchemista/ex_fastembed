@@ -20,6 +20,14 @@ cargo clippy --locked --all-targets --all-features --manifest-path native/ex_fas
 function has documentation and a type specification, and that the model guide
 matches the native catalog.
 
+CI runs these checks on pull requests and pushes to `master`. A newer commit
+cancels an older check run for the same pull request or branch. Rust dependencies,
+ONNX Runtime, Mix dependencies, and Dialyzer PLTs are cached. Cache keys separate
+toolchain versions; the library's own code is rebuilt and tested on every run.
+The first run after a toolchain or dependency change may need to rebuild caches.
+The eight precompiled release archives are built only when a GitHub release is
+published.
+
 ## Coverage
 
 `mix test --cover` enforces **90% Elixir line coverage** and writes HTML reports to

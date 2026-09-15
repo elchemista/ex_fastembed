@@ -101,7 +101,7 @@ jobs:
           esac
           library="${prefix}ex_fastembed-v$PROJECT_VERSION-nif-$NIF_VERSION-$NIF_TARGET.$extension"
           cp "target/$NIF_TARGET/release/$source_library" "$RUNNER_TEMP/$library"
-          tar -czf "$GITHUB_WORKSPACE/$library.tar.gz" -C "$RUNNER_TEMP" "$library"
+          tar -czf "../../$library.tar.gz" -C "$RUNNER_TEMP" "$library"
           {
             echo "file-name=$library.tar.gz"
             echo "file-path=$library.tar.gz"

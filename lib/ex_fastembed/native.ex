@@ -12,6 +12,7 @@ defmodule ExFastembed.Native do
     targets: [
       "aarch64-apple-darwin",
       "aarch64-unknown-linux-gnu",
+      "x86_64-pc-windows-msvc",
       "x86_64-unknown-linux-gnu"
     ],
     nif_versions: ["2.15", "2.16"]

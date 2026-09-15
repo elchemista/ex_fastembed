@@ -2,11 +2,19 @@ project_root = Path.expand("..", __DIR__)
 checksum_path = Path.join(project_root, "checksum-Elixir.ExFastembed.Native.exs")
 [_, version] = Regex.run(~r/@version "([^"]+)"/, File.read!(Path.join(project_root, "mix.exs")))
 
-targets = ["aarch64-apple-darwin", "aarch64-unknown-linux-gnu", "x86_64-unknown-linux-gnu"]
+targets = [
+  "aarch64-apple-darwin",
+  "aarch64-unknown-linux-gnu",
+  "x86_64-pc-windows-msvc",
+  "x86_64-unknown-linux-gnu"
+]
 
 expected =
   for nif <- ["2.15", "2.16"], target <- targets do
-    "libex_fastembed-v#{version}-nif-#{nif}-#{target}.so.tar.gz"
+    {prefix, extension} =
+      if String.contains?(target, "windows"), do: {"", "dll"}, else: {"lib", "so"}
+
+    "#{prefix}ex_fastembed-v#{version}-nif-#{nif}-#{target}.#{extension}.tar.gz"
   end
   |> Enum.sort()
 
@@ -26,7 +34,10 @@ case System.argv() do
     files = Path.wildcard(Path.join(artifacts_dir, "*.tar.gz")) |> Enum.sort()
 
     unless Enum.map(files, &Path.basename/1) == expected,
-      do: raise("Expected all six NIF archives for #{version}; found #{length(files)}")
+      do:
+        raise(
+          "Expected all #{length(expected)} NIF archives for #{version}; found #{length(files)}"
+        )
 
     entries =
       Enum.map_join(files, "", fn file ->
@@ -42,7 +53,7 @@ case System.argv() do
       end)
 
     File.write!(checksum_path, "%{\n" <> entries <> "}\n")
-    IO.puts("Generated checksums from all six NIF archives for #{version}")
+    IO.puts("Generated checksums from all #{length(expected)} NIF archives for #{version}")
 
   _ ->
     raise "Usage: elixir scripts/checksums.exs ARTIFACT_DIRECTORY | --check"

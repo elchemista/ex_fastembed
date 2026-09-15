@@ -12,7 +12,8 @@ Add the dependency to `mix.exs`:
 ```
 
 Requires **Elixir 1.18+**. Precompiled NIFs support Linux x86_64/aarch64
-(glibc 2.38+, OpenSSL 3, such as Ubuntu 24.04) and macOS Apple Silicon.
+(glibc 2.38+, OpenSSL 3, such as Ubuntu 24.04), macOS Apple Silicon, and
+Windows x86_64 (MSVC). See [platform requirements](guides/development.md#platforms).
 Installation verifies their SHA-256 checksums; Rust is not needed on these targets.
 
 ```bash

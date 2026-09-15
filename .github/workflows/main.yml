@@ -2,6 +2,8 @@ name: Build precompiled NIFs
 
 on:
   workflow_dispatch:
+  release:
+    types: [published]
   push:
     branches: ['prepare-hex-release']
     paths:
@@ -10,8 +12,6 @@ on:
       - 'mix.exs'
       - 'scripts/checksums.exs'
       - '.github/workflows/main.yml'
-    tags:
-      - 'v*'
 
 permissions:
   contents: write
@@ -119,10 +119,11 @@ jobs:
             release-artifacts/*.tar.gz
             checksum-Elixir.ExFastembed.Native.exs
           if-no-files-found: error
-      - name: Publish archives and checksum on version tags
-        if: github.ref_type == 'tag'
+      - name: Attach archives and checksum to the published release
+        if: github.event_name == 'release'
         uses: softprops/action-gh-release@v3.0.3
         with:
+          tag_name: ${{ github.event.release.tag_name }}
           fail_on_unmatched_files: true
           files: |
             release-artifacts/*.tar.gz

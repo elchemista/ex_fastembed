@@ -46,14 +46,16 @@ compiler commands blocked. It does not depend on an unpublished release URL.
 
 ## 3. Publish the native release
 
-After reviewing and committing the release source, point `v0.1.0` at the release
-commit and push that tag. Verify an existing local tag points to this commit
-before pushing it.
-ExDoc source links use this tag. The tag must match the Mix and Cargo versions.
-The tag workflow builds the full matrix, generates its checksum map, and attaches
-both to the GitHub release.
+Commit and push the release source, then merge it into `master`. On GitHub,
+create and publish the release with tag `v0.1.0` targeting that updated commit.
+If the tag already exists, verify that it points to the intended release commit.
+ExDoc source links use this tag, which must match the Mix and Cargo versions.
 
-A rebuild can change archive hashes. Download the **tag run's** `nif-release`
+Publishing the release starts the full NIF matrix. The final job generates the
+checksum map and attaches it and all six archives to that same GitHub release.
+Saving a draft or pushing a tag alone does not start the release build.
+
+A rebuild can change archive hashes. Download the **release run's** `nif-release`
 artifact and regenerate the local checksum map again before building the final
 Hex package. Do not reuse checksums from an earlier build. Commit the generated
 map, then verify the real release download in a fresh consumer without

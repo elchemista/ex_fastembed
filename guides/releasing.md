@@ -67,6 +67,11 @@ Do not reuse checksums from an earlier build. Commit the generated map, then
 verify the real release download in a fresh consumer without
 `EX_FASTEMBED_BUILD` or a seeded NIF cache.
 
+Push the checksum commit to `master` and publish the Hex package from that
+commit. Keep the `v0.1.0` tag on the source commit that produced the release
+archives. Updating checksums does not require moving the tag, republishing the
+GitHub release, or rebuilding the NIFs.
+
 ## 4. Rehearse and publish Hex
 
 Build checks require no Hex account: CI runs `mix hex.build` and

@@ -1,10 +1,10 @@
 %{
-  "ex_fastembed-v0.1.0-nif-2.15-x86_64-pc-windows-msvc.dll.tar.gz" => "sha256:f599a42087dc3632825ad63907042ccfb4f9353735724b6e6152bbb7eede3595",
-  "ex_fastembed-v0.1.0-nif-2.16-x86_64-pc-windows-msvc.dll.tar.gz" => "sha256:180684f515a6bb20106b764aba17d2ff5782f57adf2647bdeceb613bd84784e0",
-  "libex_fastembed-v0.1.0-nif-2.15-aarch64-apple-darwin.so.tar.gz" => "sha256:06222b9055df0fbe0eb5675b44668d999a59cbf34d3d2546644edd32978241b0",
-  "libex_fastembed-v0.1.0-nif-2.15-aarch64-unknown-linux-gnu.so.tar.gz" => "sha256:d6a9ab27347144751e2a7cdc72654cd79178099855b89674ef55b876205d68f0",
-  "libex_fastembed-v0.1.0-nif-2.15-x86_64-unknown-linux-gnu.so.tar.gz" => "sha256:3bcd6ea37f48b1388f520caba5ff8f5b362bebd6f6ae1b55cedeff06679dc819",
-  "libex_fastembed-v0.1.0-nif-2.16-aarch64-apple-darwin.so.tar.gz" => "sha256:261d8350992a6683cf9521274560e067e728b765f36750d88a798bc7a6ff1fa7",
-  "libex_fastembed-v0.1.0-nif-2.16-aarch64-unknown-linux-gnu.so.tar.gz" => "sha256:8814fc11d2d06c4b5d29f82c1817cbba3e666ebe3bac9f5ede0f09a6f392229c",
-  "libex_fastembed-v0.1.0-nif-2.16-x86_64-unknown-linux-gnu.so.tar.gz" => "sha256:984d73bc54d2017f8a38d1975303cbe94ec30e4650b441ba62b55eaf28d12523",
+  "ex_fastembed-v0.1.0-nif-2.15-x86_64-pc-windows-msvc.dll.tar.gz" => "sha256:5a0c55344fef4bda0a9ac2d0625e7f20e277714d0c7e6f2c4fbd08d19dcbbc4c",
+  "ex_fastembed-v0.1.0-nif-2.16-x86_64-pc-windows-msvc.dll.tar.gz" => "sha256:bd01198664d65c66c0e983195e4e054fc43e2fead1fa3e92fdfd3e24a60b6cfb",
+  "libex_fastembed-v0.1.0-nif-2.15-aarch64-apple-darwin.so.tar.gz" => "sha256:f81c3fec0d1831a880becc27cc367e436ce40dea9a6009ffe96582b8536c0da3",
+  "libex_fastembed-v0.1.0-nif-2.15-aarch64-unknown-linux-gnu.so.tar.gz" => "sha256:9c4611ea0d81e0b3456be3c1d4139175a921ae267016383b59c9d1793395aef5",
+  "libex_fastembed-v0.1.0-nif-2.15-x86_64-unknown-linux-gnu.so.tar.gz" => "sha256:cc720c2dfffa08323a96dceb988e5007297f926636fe14b2e4e247b0793f3235",
+  "libex_fastembed-v0.1.0-nif-2.16-aarch64-apple-darwin.so.tar.gz" => "sha256:c00aa8e04f2ea1b206d582e784c5071f67e7f4db9c382a8b28befa53e4fc338c",
+  "libex_fastembed-v0.1.0-nif-2.16-aarch64-unknown-linux-gnu.so.tar.gz" => "sha256:73dc044133e1e12d9cf4c5e4f7f7fe367d71f254d5098110636d529b02ce285b",
+  "libex_fastembed-v0.1.0-nif-2.16-x86_64-unknown-linux-gnu.so.tar.gz" => "sha256:69337e6deede342dad3b91411b595eca4339f9ffb0045e38cc710cb79c60ba7c",
 }

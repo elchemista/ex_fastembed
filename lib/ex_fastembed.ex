@@ -112,7 +112,12 @@ defmodule ExFastembed do
   def unload_reranker, do: Native.unload_reranker()
 
   @doc """
-  Unloads models using a repository in the current cache and deletes that repository.
+  Deletes the downloaded model files from disk, unloading matching native sessions first.
+
+  The cache directory is the model's on-disk storage: deletion physically removes
+  its repository directory, including ONNX weights, tokenizer/config files,
+  blobs, and partial downloads. To release only RAM and keep these files, use
+  `unload/0` or `unload_reranker/0`.
 
   Accepts the same names and kinds as `model_info/2`. **All cached variants and
   revisions in the selected repository are removed**, including shared tokenizer
@@ -121,8 +126,8 @@ defmodule ExFastembed do
 
   Returns `{:ok, true}` if removed or already absent. Repository symlinks and
   non-directory entries are rejected. Internal symlinks are removed without
-  following their targets. On filesystem errors, removal can be partial and the
-  model remains unloaded; the error can be corrected and deletion retried.
+  following their targets. If file removal fails after unloading, deletion can
+  be partial and the model stays unloaded; correct the error and retry.
 
   Stop submitting work and drain application queues first, as for `unload/0`.
   Deletion is serialized with library loads in this VM. Other VMs or external

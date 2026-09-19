@@ -145,7 +145,13 @@ defmodule ExFastembedModelsTest do
     cache_fixture(cache, "Xenova/all-MiniLM-L12-v2", "onnx/model.onnx")
     cache_fixture(cache, "Xenova/all-MiniLM-L12-v2", "onnx/model_quantized.onnx")
     cache_fixture(cache, "Xenova/bge-small-en-v1.5", "onnx/model.onnx")
+    assert {:ok, info} = ExFastembed.model_info("AllMiniLML12V2", :embedding)
+    assert File.dir?(info.path)
+    assert Enum.all?(info.file_details, &File.regular?(&1.path))
+
     assert {:ok, true} = ExFastembed.delete_model("AllMiniLML12V2", :embedding)
+    refute File.exists?(info.path)
+    assert Enum.all?(info.file_details, &(not File.exists?(&1.path)))
     assert {:ok, true} = ExFastembed.delete_model("AllMiniLML12V2", :embedding)
 
     for model <- ["AllMiniLML12V2", "AllMiniLML12V2Q"] do

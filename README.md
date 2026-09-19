@@ -66,7 +66,7 @@ Elixir. Cache status checks all required files locally without loading a model.
 See the [complete model catalog](guides/models.md) and the
 [API documentation](https://hexdocs.pm/ex_fastembed/ExFastembed.html) for details.
 
-## Unloading and cache management
+## Unloading from RAM and deleting model files
 
 ```elixir
 ExFastembed.cache_directory()                   # Absolute effective cache root
@@ -76,6 +76,7 @@ ExFastembed.cache_directory()                   # Absolute effective cache root
 
 {:ok, true} = ExFastembed.unload()                # Embedding session only; keeps files
 {:ok, true} = ExFastembed.unload_reranker()       # Reranker session only; keeps files
+# Unloads the model and physically deletes its downloaded files from disk.
 {:ok, true} = ExFastembed.delete_model("BGESmallENV15", :embedding)
 ```
 
@@ -95,8 +96,11 @@ own request queues**: stop submitting work and drain your queue before unloading
 or deleting. The library serializes native operations and does not cancel jobs;
 concurrent operations have no guaranteed ordering.
 
-Deletion unloads sessions using the selected repository in the current cache and
-removes **all of its variants and revisions**, including shared files. Other
+`unload/0` and `unload_reranker/0` release native sessions from RAM and keep all
+model files on disk. `delete_model/2` unloads matching sessions and physically
+deletes the repository directory, including ONNX weights, tokenizer/config files,
+blobs, partial downloads, and **all of its variants and revisions**. The cache
+is the directory containing the actual downloaded model files. Other
 repositories and models loaded from different cache roots are preserved. Loads
 and deletion are coordinated within this VM; coordinate other cache users in the
 application. Repository symlinks are rejected. A filesystem error can leave a

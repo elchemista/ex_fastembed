@@ -32,5 +32,5 @@ mkdir -p "$project_root/cover"
 cp -R cover/. "$project_root/cover/"
 
 cd "$project_root/native/ex_fastembed"
-cargo llvm-cov report --release --fail-under-lines 80 --show-missing-lines
+cargo llvm-cov report --release --fail-under-lines 90 --show-missing-lines
 cargo llvm-cov report --release --html --output-dir "$project_root/cover/rust"

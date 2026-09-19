@@ -183,6 +183,57 @@ defmodule ExFastembedModelsTest do
     assert File.read!(path) == "keep"
   end
 
+  @tag skip: match?({:win32, _}, :os.type())
+  test "repository symlinks are rejected without deleting the target", %{cache: cache} do
+    outside = cache <> "-outside"
+    on_exit(fn -> File.rm_rf!(outside) end)
+    snapshot = cache_fixture(outside, "Xenova/bge-small-en-v1.5", "onnx/model.onnx")
+    target = Path.dirname(Path.dirname(snapshot))
+    File.mkdir_p!(cache)
+    link = Path.join(cache, Path.basename(target))
+    File.ln_s!(target, link)
+
+    assert {:error, message} = ExFastembed.delete_model("BGESmallENV15", :embedding)
+    assert message =~ "not a regular directory"
+    assert File.read!(Path.join(snapshot, "onnx/model.onnx")) == "fixture"
+    assert {:ok, %{type: :symlink}} = File.lstat(link)
+  end
+
+  @tag skip: match?({:win32, _}, :os.type())
+  test "disk bytes include partial files and old revisions without double-counting blobs", %{
+    cache: cache
+  } do
+    snapshot = cache_fixture(cache, "Xenova/bge-small-en-v1.5", "onnx/model.onnx")
+    root = Path.dirname(Path.dirname(snapshot))
+    blob = Path.join(root, "blobs/weights")
+    File.mkdir_p!(Path.dirname(blob))
+    File.rename!(Path.join(snapshot, "onnx/model.onnx"), blob)
+    File.ln_s!(blob, Path.join(snapshot, "onnx/model.onnx"))
+    File.write!(Path.join(root, "blobs/download.part"), "partial")
+    File.mkdir_p!(Path.join(root, "snapshots/older"))
+    File.write!(Path.join(root, "snapshots/older/model.onnx"), "old")
+
+    assert {:ok, %{cached: true, variant_bytes: 35, disk_bytes: 52}} =
+             ExFastembed.model_info("BGESmallENV15", :embedding)
+
+    assert {:ok, true} = ExFastembed.delete_model("BGESmallENV15", :embedding)
+    refute File.exists?(root)
+    refute File.exists?(blob)
+  end
+
+  test "deletion removes an interrupted download without a complete snapshot", %{cache: cache} do
+    root = Path.join(cache, "models--Xenova--bge-small-en-v1.5")
+    File.mkdir_p!(Path.join(root, "blobs"))
+    File.write!(Path.join(root, "blobs/weights.part"), "partial")
+
+    assert {:ok, %{cached: false, variant_bytes: nil, disk_bytes: 7}} =
+             ExFastembed.model_info("BGESmallENV15", :embedding)
+
+    assert {:ok, true} = ExFastembed.delete_model("BGESmallENV15", :embedding)
+    refute File.exists?(root)
+    assert File.dir?(cache)
+  end
+
   test "unload is idempotent and the loaded filter is empty without sessions" do
     assert {:ok, true} = ExFastembed.unload()
     assert {:ok, true} = ExFastembed.unload()

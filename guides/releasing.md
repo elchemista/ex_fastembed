@@ -15,14 +15,19 @@ Keep `mix.exs`, `native/ex_fastembed/Cargo.toml`, the native lockfile,
 `CHANGELOG.md`, and the README installation version in sync.
 
 ```bash
-task check
-task coverage
+task source-check
 ```
+
+`task source-check` runs formatting, compilation, ExUnit, Credo, Dialyzer,
+Clippy, documentation, combined coverage, and an isolated production consumer of
+the actual Hex source archive. It does not require unpublished NIFs. Without the
+Task runner, use the commands in [development and coverage](development.md) and
+`bash scripts/package_smoke.sh --source`.
 
 All public functions must have `@doc` and `@spec`; public types must have
 `@typedoc`. CI checks these contracts, the generated model guide, formatting,
-static analysis, and a 90% Elixir line coverage floor. Native coverage has an
-80% floor and includes real inference through the BEAM.
+static analysis, and a 90% Elixir line coverage floor. Native coverage has a
+90% floor and includes real inference through the BEAM.
 
 ## 2. Publish the native release
 
@@ -40,8 +45,9 @@ the Mix and Cargo versions. A tag named `0.1.1` is invalid because the NIF downl
 URLs include the `v` prefix. This check runs before any matrix build starts.
 
 The matrix contains four targets (Linux x86_64/aarch64, macOS Apple Silicon,
-and Windows x86_64 MSVC) and NIF ABI versions 2.15 and 2.16. Its final job validates
-all eight archives, generates `checksum-Elixir.ExFastembed.Native.exs` using their
+and Windows x86_64 MSVC) and NIF ABI versions 2.15 and 2.16. Each matrix job tests
+loading the exact compiled NIF, model inference, metadata, and unload before
+uploading its archive. Its final job validates all eight archives, generates `checksum-Elixir.ExFastembed.Native.exs` using their
 SHA-256 hashes, and attaches everything to the GitHub release. The `nif-release`
 artifact contains the same archives and checksum map.
 
@@ -65,6 +71,10 @@ elixir scripts/checksums.exs _build/release-artifacts
 elixir scripts/checksums.exs --check
 bash scripts/package_smoke.sh
 ```
+
+Run `task release-check` after collecting the matching release artifacts. It
+adds the precompiled package smoke test to the source and coverage checks. Source
+validation alone does not establish that the release's precompiled downloads work.
 
 The smoke test loads the packaged NIF with Rust compiler commands blocked.
 Do not reuse checksums from an earlier build. Commit the generated map, then

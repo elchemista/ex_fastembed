@@ -57,9 +57,20 @@ tasks:
     desc: Measure Elixir and Rust coverage with real inference
     cmd: bash scripts/coverage.sh
 
+  source-package-smoke:
+    desc: Test the Hex source archive in an isolated production consumer
+    cmd: bash scripts/package_smoke.sh --source
+
   package-smoke:
     desc: Build and test the Hex archive in an isolated consumer
     cmd: bash scripts/package_smoke.sh
+
+  source-check:
+    desc: Verify source, coverage, and package before building release NIFs
+    cmds:
+      - task: check
+      - task: coverage
+      - task: source-package-smoke
 
   release-check:
     desc: Run all checks and build the Hex package and documentation
@@ -99,6 +110,7 @@ tasks:
     desc: Publish to hex.pm
     prompt: Are you sure to publish?
     cmds:
+      - elixir scripts/checksums.exs --check
       - mix hex.publish
 
   default:

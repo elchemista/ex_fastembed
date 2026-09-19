@@ -2,6 +2,9 @@
 
 ## 0.1.1
 
+- Document model memory, on-disk storage, shared repository deletion, and application-owned queues in a dedicated lifecycle guide.
+- Enforce 90% Elixir and Rust line coverage, including real inference in CI, and smoke-test every precompiled target.
+
 - Upgrade fastembed-rs from 6.1.0 to 7.0.1, retaining ONNX Runtime bindings 2.0.0-rc.13.
 - Add idempotent `unload/0` and `unload_reranker/0`, releasing native sessions and buffers after active operations finish.
 - Serialize loading, inference, and unloading per model family; failed loads preserve the existing session.

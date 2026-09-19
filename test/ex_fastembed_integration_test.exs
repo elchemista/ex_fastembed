@@ -84,6 +84,39 @@ defmodule ExFastembedIntegrationTest do
     end
   end
 
+  test "deleting a loaded reranker removes its files and preserves embedding inference" do
+    assert {:ok, 384} = ExFastembed.load("BGESmallENV15")
+    assert {:ok, true} = ExFastembed.load_reranker("JINARerankerV1TurboEn")
+    assert {:ok, original} = ExFastembed.model_info("JINARerankerV1TurboEn", :reranker)
+    original_cache = System.get_env("FASTEMBED_CACHE_DIR")
+
+    cache =
+      Path.join(System.tmp_dir!(), "fastembed-reranker-#{System.unique_integer([:positive])}")
+
+    destination = Path.join(cache, Path.basename(original.path))
+    File.mkdir_p!(cache)
+
+    try do
+      File.cp_r!(original.path, destination)
+      System.put_env("FASTEMBED_CACHE_DIR", cache)
+      assert {:ok, true} = ExFastembed.load_reranker("JINARerankerV1TurboEn")
+      assert {:ok, true} = ExFastembed.delete_model("JINARerankerV1TurboEn", :reranker)
+      refute File.exists?(destination)
+      assert File.dir?(original.path)
+      assert {:error, _} = ExFastembed.rerank("query", ["deleted"], false)
+      assert {:ok, vectors} = ExFastembed.embed_text(["embedding remains loaded"])
+      assert_embeddings(vectors, 1, 384)
+      assert {:ok, [%{kind: :embedding}]} = ExFastembed.loaded_models()
+    after
+      if original_cache,
+        do: System.put_env("FASTEMBED_CACHE_DIR", original_cache),
+        else: System.delete_env("FASTEMBED_CACHE_DIR")
+
+      ExFastembed.unload_reranker()
+      File.rm_rf!(cache)
+    end
+  end
+
   test "download task populates an empty cache and produces a usable embedding model" do
     original_cache = System.get_env("FASTEMBED_CACHE_DIR")
 

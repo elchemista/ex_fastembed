@@ -3,6 +3,9 @@
 Local text embeddings and document reranking for Elixir, powered by
 [FastEmbed](https://github.com/Anush008/fastembed-rs) and ONNX Runtime.
 
+For lifecycle examples, file-size definitions, and safe removal of downloads,
+see [model memory, files, and lifecycle](guides/model_lifecycle.md).
+
 ## Installation
 
 Add the dependency to `mix.exs`:
@@ -24,6 +27,8 @@ mix compile
 To build from source, add `{:rustler, "~> 0.38.0", runtime: false}` to your
 application's dependencies and set `EX_FASTEMBED_BUILD=1`. This requires Rust
 1.91+, a C/C++ compiler, and the [platform dependencies](guides/development.md#platforms).
+Git checkouts without matching release NIFs and checksums also require a source
+build. See the [release guide](guides/releasing.md) before publishing a package.
 
 ## Quick start
 
@@ -113,6 +118,9 @@ EX_FASTEMBED_BUILD=1 mix test --cover
 EX_FASTEMBED_BUILD=1 mix test --include integration --cover
 EX_FASTEMBED_BUILD=1 mix docs --warnings-as-errors
 ```
+
+Both Elixir and Rust line coverage must meet a **90% minimum**. Run
+`bash scripts/coverage.sh` for the combined native and real-inference report.
 
 The default suite runs without downloading models. Integration tests exercise real
 embedding and reranking. See [development and coverage](guides/development.md) and

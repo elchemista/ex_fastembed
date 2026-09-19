@@ -20,6 +20,10 @@ expected =
 
 case System.argv() do
   ["--check"] ->
+    unless File.regular?(checksum_path) do
+      raise "Missing NIF checksums for #{version}. Build and download all eight matching release archives, then run elixir scripts/checksums.exs ARTIFACT_DIRECTORY before publishing to Hex."
+    end
+
     {checksums, _} = Code.eval_file(checksum_path)
 
     unless Enum.sort(Map.keys(checksums)) == expected,

@@ -21,6 +21,9 @@ defmodule ExFastembed do
   All public functions return error tuples for invalid input. Strings must be
   valid UTF-8. Model names are matched case-insensitively against the bundled
   FastEmbed catalog, including the legacy aliases.
+
+  See the [model lifecycle guide](model_lifecycle.html) for memory, disk usage,
+  cache configuration, and deletion examples.
   """
 
   alias ExFastembed.Native
@@ -37,7 +40,7 @@ defmodule ExFastembed do
   @typedoc "The two supported model families."
   @type model_kind :: :embedding | :reranker
 
-  @typedoc "A distinct model variant and whether all its required files are cached."
+  @typedoc "A model variant with runtime state, local file paths, and disk byte sizes."
   @type model_info :: %{
           name: String.t(),
           kind: model_kind(),
@@ -97,7 +100,7 @@ defmodule ExFastembed do
   decrease by the size of the model. Already returned embeddings remain owned by
   the calling BEAM processes.
   """
-  @doc group: :embeddings
+  @doc group: :lifecycle
   @spec unload() :: {:ok, true} | error()
   def unload, do: Native.unload()
 
@@ -107,7 +110,7 @@ defmodule ExFastembed do
   Returns `{:ok, true}` even if already unloaded. The synchronization, application
   queue ownership, and memory reclamation behavior described in `unload/0` also apply.
   """
-  @doc group: :reranking
+  @doc group: :lifecycle
   @spec unload_reranker() :: {:ok, true} | error()
   def unload_reranker, do: Native.unload_reranker()
 
@@ -133,7 +136,7 @@ defmodule ExFastembed do
   Deletion is serialized with library loads in this VM. Other VMs or external
   processes sharing the cache must be coordinated by the application.
   """
-  @doc group: :discovery
+  @doc group: :lifecycle
   @spec delete_model(String.t(), model_kind()) :: {:ok, true} | error()
   def delete_model(name, kind) when is_binary(name) and kind in [:embedding, :reranker] do
     with :ok <- validate_string(name, "model name must be a valid UTF-8 string") do

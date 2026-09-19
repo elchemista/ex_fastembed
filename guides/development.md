@@ -43,7 +43,7 @@ bash scripts/coverage.sh
 ```
 
 The script combines Rust unit tests with the complete ExUnit suite and real
-inference tests. It enforces **80% Rust line coverage** and writes the native HTML
+inference tests. It enforces **90% Rust line coverage** and writes the native HTML
 report to `cover/rust/html/index.html`. Test helper code and third-party crates
 are excluded from the native report. An isolated Elixir build keeps the regular
 NIF build unchanged.
@@ -56,6 +56,15 @@ EX_FASTEMBED_BUILD=1 mix test --include integration --cover
 
 The tests check vector dimensions and normalization, model replacement, concurrent
 calls, errors, ranking order, original document indices, and optional document text.
+They also verify unload/reload, independent model families, original cache roots,
+physical deletion of model files, and preserved unrelated models. Native tests
+cover destruction after active work, failed replacement, symlinks, and traversal
+rejection. Tests use temporary directories for deletion and leave the shared
+model download cache intact.
+
+The stable CI job runs the combined coverage script, enforces the same 90% native
+threshold, and uploads the Elixir and Rust HTML reports. The offline suite still
+runs against both supported toolchain combinations.
 
 ## Model catalog
 
@@ -85,7 +94,8 @@ need a source build with a compatible ONNX Runtime configuration.
 Windows archives contain `.dll` files and are built and tested on Windows Server
 2022. They require a current Windows 10/11 or Windows Server installation with
 DirectML and the Microsoft Visual C++ 2015–2022 x64 runtime. The CI loads each
-Windows NIF ABI and runs an actual embedding inference before uploading it.
+NIF ABI on all four target platforms and verifies actual embedding inference,
+cache metadata, and unload before uploading it.
 
 Set `EX_FASTEMBED_BUILD=1` to compile with Rustler. Source builds require Rust
 1.91+ and a C/C++ compiler. On Debian/Ubuntu, install `clang`, `libssl-dev`, and
@@ -97,7 +107,21 @@ Windows GNU, macOS Intel, musl, ARMv7, and RISC-V require a compatible ONNX Runt
 supplied separately. Follow the [ort linking documentation](https://ort.pyke.io/setup/linking)
 when configuring a custom runtime. GPU providers are not enabled by default.
 
-## Package smoke test
+## Package smoke tests
+
+Before publishing native release artifacts, test the source archive:
+
+```bash
+bash scripts/package_smoke.sh --source
+```
+
+This extracts the actual Hex archive into a temporary production consumer,
+builds its packaged Rust sources, and runs inference, metadata, and unload checks.
+It verifies that the lifecycle guide and native sources are packaged and that
+local build artifacts are absent. `task source-check` combines this with all
+static checks and coverage.
+
+After building all eight matching NIF archives and their checksums:
 
 ```bash
 bash scripts/package_smoke.sh

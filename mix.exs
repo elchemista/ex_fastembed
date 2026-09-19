@@ -85,6 +85,7 @@ defmodule ExFastembed.MixProject do
       extras: [
         "README.md",
         "guides/models.md",
+        "guides/model_lifecycle.md",
         "guides/development.md",
         "guides/releasing.md",
         "CHANGELOG.md",
@@ -95,6 +96,7 @@ defmodule ExFastembed.MixProject do
       ],
       groups_for_docs: [
         "Model discovery": &(&1[:group] == :discovery),
+        "Model lifecycle": &(&1[:group] == :lifecycle),
         Embeddings: &(&1[:group] == :embeddings),
         Reranking: &(&1[:group] == :reranking)
       ]

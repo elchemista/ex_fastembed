@@ -111,6 +111,84 @@ defmodule ExFastembedModelsTest do
     end
   end
 
+  test "cache paths and byte sizes describe complete and partial variants", %{cache: cache} do
+    assert ExFastembed.cache_directory() == Path.expand(cache)
+    assert {:ok, missing} = ExFastembed.model_info("AllMiniLML12V2", :embedding)
+    assert missing.cache_dir == Path.expand(cache)
+    assert missing.disk_bytes == 0
+    assert missing.variant_bytes == nil
+    assert missing.revision == nil
+    refute missing.loaded
+    assert Enum.all?(missing.file_details, &is_nil(&1.path))
+
+    snapshot = cache_fixture(cache, "Xenova/all-MiniLM-L12-v2", "onnx/model.onnx")
+    assert {:ok, info} = ExFastembed.model_info("AllMiniLML12V2", :embedding)
+    assert info.cached
+    assert info.revision == "fixture"
+    assert info.variant_bytes == 35
+    assert info.disk_bytes == 42
+    assert info.path == Path.dirname(Path.dirname(snapshot))
+    assert info.files == Enum.sort(Enum.uniq(info.files))
+    assert Enum.all?(info.file_details, &(&1.size_bytes == 7))
+    assert Enum.all?(info.file_details, &(&1.path == Path.join(snapshot, &1.name)))
+
+    File.write!(Path.join(snapshot, "tokenizer.json"), "")
+    assert {:ok, partial} = ExFastembed.model_info("AllMiniLML12V2", :embedding)
+    refute partial.cached
+    assert partial.variant_bytes == nil
+    assert partial.disk_bytes == 35
+  end
+
+  test "deletion removes every variant in a repository but keeps unrelated models", %{
+    cache: cache
+  } do
+    cache_fixture(cache, "Xenova/all-MiniLM-L12-v2", "onnx/model.onnx")
+    cache_fixture(cache, "Xenova/all-MiniLM-L12-v2", "onnx/model_quantized.onnx")
+    cache_fixture(cache, "Xenova/bge-small-en-v1.5", "onnx/model.onnx")
+    assert {:ok, true} = ExFastembed.delete_model("AllMiniLML12V2", :embedding)
+    assert {:ok, true} = ExFastembed.delete_model("AllMiniLML12V2", :embedding)
+
+    for model <- ["AllMiniLML12V2", "AllMiniLML12V2Q"] do
+      assert {:ok, %{cached: false, disk_bytes: 0}} = ExFastembed.model_info(model, :embedding)
+    end
+
+    assert {:ok, %{cached: true}} = ExFastembed.model_info("BGESmallENV15", :embedding)
+    cache_fixture(cache, "jinaai/jina-reranker-v1-turbo-en", "onnx/model.onnx")
+    assert {:ok, true} = ExFastembed.delete_model("JINARerankerV1TurboEn", :reranker)
+    assert {:ok, %{cached: false}} = ExFastembed.model_info("JINARerankerV1TurboEn", :reranker)
+  end
+
+  test "deletion rejects invalid input and non-directory cache entries", %{cache: cache} do
+    for {name, kind} <- [
+          {"unknown", :embedding},
+          {"unknown", :reranker},
+          {nil, :embedding},
+          {<<255>>, :embedding},
+          {"BGESmallENV15", :unknown}
+        ] do
+      assert {:error, reason} = ExFastembed.delete_model(name, kind)
+      assert is_binary(reason)
+    end
+
+    File.mkdir_p!(cache)
+    path = Path.join(cache, "models--Xenova--bge-small-en-v1.5")
+    File.write!(path, "keep")
+    assert {:error, _} = ExFastembed.delete_model("BGESmallENV15", :embedding)
+    assert File.read!(path) == "keep"
+  end
+
+  test "unload is idempotent and the loaded filter is empty without sessions" do
+    assert {:ok, true} = ExFastembed.unload()
+    assert {:ok, true} = ExFastembed.unload()
+    assert {:ok, true} = ExFastembed.unload_reranker()
+    assert {:ok, true} = ExFastembed.unload_reranker()
+    assert {:ok, []} = ExFastembed.loaded_models()
+    assert {:error, _} = ExFastembed.embed_text(["after unload"])
+    assert {:error, _} = ExFastembed.rerank("query", ["after unload"], false)
+    assert :ok = Models.run(["--loaded"])
+    assert messages() =~ "0 models shown; 0 cached."
+  end
+
   defp cache_fixture(cache, repository, model_file) do
     root = Path.join(cache, "models--" <> String.replace(repository, "/", "--"))
     snapshot = Path.join(root, "snapshots/fixture")

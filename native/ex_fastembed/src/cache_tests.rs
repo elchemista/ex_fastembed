@@ -62,3 +62,77 @@ fn cache_follows_hub_symlinks_and_rejects_broken_links() {
     std::fs::remove_file(blob).unwrap();
     assert!(!files_cached(&cache, "test/model", "model.onnx", &[]));
 }
+
+#[test]
+fn required_files_are_unique_and_sorted() {
+    assert_eq!(
+        required_files("model.onnx", &["model.onnx".into(), "weights.data".into()]),
+        vec![
+            "config.json",
+            "model.onnx",
+            "special_tokens_map.json",
+            "tokenizer.json",
+            "tokenizer_config.json",
+            "weights.data"
+        ]
+    );
+}
+
+#[test]
+fn repository_paths_reject_traversal_and_invalid_names() {
+    let root = Path::new("/cache");
+    for repository in [
+        "../model",
+        "test/..",
+        "test/../model",
+        "/absolute",
+        "test/a\\b",
+        "test/",
+        "",
+        "model",
+    ] {
+        assert!(repository_path(root, repository).is_err(), "{repository}");
+    }
+    assert_eq!(
+        repository_path(root, "test/model-v1.5").unwrap(),
+        root.join("models--test--model-v1.5")
+    );
+}
+
+#[test]
+fn removal_is_idempotent_and_keeps_sibling_repositories() {
+    let root = tempfile::tempdir().unwrap();
+    let selected = root.path().join("models--test--selected");
+    let other = root.path().join("models--test--other");
+    std::fs::create_dir_all(selected.join("snapshots/revision")).unwrap();
+    std::fs::write(selected.join("snapshots/revision/model.onnx"), b"weights").unwrap();
+    std::fs::write(&other, b"unrelated").unwrap();
+    assert_eq!(directory_bytes(&selected).unwrap(), 7);
+    remove_repository(&selected).unwrap();
+    remove_repository(&selected).unwrap();
+    assert!(!selected.exists());
+    assert_eq!(std::fs::read(&other).unwrap(), b"unrelated");
+    assert!(remove_repository(&other).is_err());
+}
+
+#[cfg(unix)]
+#[test]
+fn sizes_and_removal_do_not_follow_links_or_delete_external_targets() {
+    use std::os::unix::fs::symlink;
+    let root = tempfile::tempdir().unwrap();
+    let external = tempfile::tempdir().unwrap();
+    std::fs::write(external.path().join("keep"), b"important").unwrap();
+    let repo = root.path().join("repository");
+    std::fs::create_dir_all(repo.join("blobs")).unwrap();
+    std::fs::write(repo.join("blobs/weights"), b"weights").unwrap();
+    symlink(repo.join("blobs/weights"), repo.join("model.onnx")).unwrap();
+    symlink(external.path(), repo.join("outside")).unwrap();
+    symlink(&repo, root.path().join("repository-link")).unwrap();
+    assert_eq!(directory_bytes(&repo).unwrap(), 7);
+    assert!(remove_repository(&root.path().join("repository-link")).is_err());
+    remove_repository(&repo).unwrap();
+    assert_eq!(
+        std::fs::read(external.path().join("keep")).unwrap(),
+        b"important"
+    );
+}

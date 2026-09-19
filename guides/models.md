@@ -1,6 +1,6 @@
 # Supported models
 
-Generated from the bundled `fastembed-rs` 6.1.0 metadata, with legacy aliases retained.
+Generated from the bundled `fastembed-rs` 7.0.1 metadata, with legacy aliases retained.
 The runtime source is `ExFastembed.embed_models/0` and `ExFastembed.reranker_models/0`.
 Names are accepted case-insensitively. Multiple names may select the same model.
 

@@ -7,7 +7,9 @@ defmodule ExFastembed do
 
   Each BEAM VM shares one embedding model and one independent reranker. Loading
   a replacement changes the model used by all processes; a failed load preserves
-  the previous model. Calls using the same model run serially.
+  the previous model. Loading, inference, and unloading within each family run
+  serially. Applications own their request queues and must stop submitting work
+  before unloading or deleting a model.
 
   Model files are downloaded on first use and cached in `.fastembed_cache`.
   Set `FASTEMBED_CACHE_DIR` before loading a model to use another directory.
@@ -41,8 +43,101 @@ defmodule ExFastembed do
           kind: model_kind(),
           repository: String.t(),
           dimension: pos_integer() | nil,
-          cached: boolean()
+          cached: boolean(),
+          loaded: boolean(),
+          cache_dir: String.t(),
+          path: String.t(),
+          revision: String.t() | nil,
+          files: [String.t()],
+          file_details: [model_file()],
+          variant_bytes: non_neg_integer() | nil,
+          disk_bytes: non_neg_integer() | nil
         }
+
+  @typedoc "A required file, its snapshot path when present, and its non-empty size in bytes."
+  @type model_file :: %{
+          name: String.t(),
+          path: String.t() | nil,
+          size_bytes: pos_integer() | nil
+        }
+
+  @doc """
+  Returns the absolute effective cache root without creating it.
+
+  Respects `HF_HOME` from the native process environment at VM startup, otherwise
+  `FASTEMBED_CACHE_DIR`, with `.fastembed_cache` as the default. Existing roots
+  are canonicalized, resolving symlinks.
+  """
+  @doc group: :discovery
+  @spec cache_directory() :: String.t()
+  def cache_directory, do: Native.cache_directory(cache_dir())
+
+  @doc """
+  Lists the models currently held by the native runtime, with their original cache paths.
+
+  Returns `{:ok, []}` when nothing is loaded. Unlike `models/0`, this also finds
+  models loaded from a different `FASTEMBED_CACHE_DIR` before it was changed.
+  Metadata is a snapshot and can change immediately under concurrent calls.
+  """
+  @doc group: :discovery
+  @spec loaded_models() :: {:ok, [model_info()]} | error()
+  def loaded_models, do: Native.loaded_models()
+
+  @doc """
+  Unloads the shared embedding model while keeping downloaded files.
+
+  Waits for an active load or inference, then drops the ONNX session, weights,
+  and its owned native buffers. Returns `{:ok, true}` even if already unloaded.
+  The reranker is independent and remains available.
+
+  Stop submitting model work and drain application queues before calling this
+  function. The library does not manage or cancel jobs; concurrent calls are
+  serialized without an ordering guarantee. A subsequent load can recreate the
+  session. Allocators may retain freed memory, so process RSS need not immediately
+  decrease by the size of the model. Already returned embeddings remain owned by
+  the calling BEAM processes.
+  """
+  @doc group: :embeddings
+  @spec unload() :: {:ok, true} | error()
+  def unload, do: Native.unload()
+
+  @doc """
+  Unloads the shared reranker while keeping downloaded files and the embedding model.
+
+  Returns `{:ok, true}` even if already unloaded. The synchronization, application
+  queue ownership, and memory reclamation behavior described in `unload/0` also apply.
+  """
+  @doc group: :reranking
+  @spec unload_reranker() :: {:ok, true} | error()
+  def unload_reranker, do: Native.unload_reranker()
+
+  @doc """
+  Unloads models using a repository in the current cache and deletes that repository.
+
+  Accepts the same names and kinds as `model_info/2`. **All cached variants and
+  revisions in the selected repository are removed**, including shared tokenizer
+  files and blobs. Both model families are checked before removal. Unrelated
+  repositories and models loaded from a different cache root remain untouched.
+
+  Returns `{:ok, true}` if removed or already absent. Repository symlinks and
+  non-directory entries are rejected. Internal symlinks are removed without
+  following their targets. On filesystem errors, removal can be partial and the
+  model remains unloaded; the error can be corrected and deletion retried.
+
+  Stop submitting work and drain application queues first, as for `unload/0`.
+  Deletion is serialized with library loads in this VM. Other VMs or external
+  processes sharing the cache must be coordinated by the application.
+  """
+  @doc group: :discovery
+  @spec delete_model(String.t(), model_kind()) :: {:ok, true} | error()
+  def delete_model(name, kind) when is_binary(name) and kind in [:embedding, :reranker] do
+    with :ok <- validate_string(name, "model name must be a valid UTF-8 string") do
+      Native.delete_model(name, kind, cache_dir())
+    end
+  end
+
+  def delete_model(_name, _kind),
+    do: {:error, "Invalid input: expected a model name and :embedding or :reranker"}
 
   @doc """
   Lists distinct model variants with their repository, dimension, and cache status.
@@ -55,6 +150,19 @@ defmodule ExFastembed do
   Uses `FASTEMBED_CACHE_DIR`, defaulting to `.fastembed_cache`. Embedding variants
   appear first, then rerankers, sorted by name within each family. Rerankers have
   a `nil` dimension.
+
+  Includes `loaded`, the absolute `cache_dir` and repository `path`, cached
+  `revision`, relative required `files`, and per-file `file_details` with snapshot
+  paths and byte sizes. `variant_bytes` is the sum of all required non-empty files
+  (`nil` if incomplete). `disk_bytes` counts regular file bytes across the entire
+  repository, including other variants, revisions and partial downloads, without
+  following symlinks or counting snapshot links twice (`nil` on read errors).
+  These are local file sizes, not RAM usage or remote download estimates. Shared
+  repositories repeat `disk_bytes`; deduplicate by `path` before summing.
+
+  `loaded` matches the variant and current cache root. Use `loaded_models/0` to
+  find sessions loaded from other cache roots. Discovery may wait for active
+  operations while reading runtime state.
 
   ## Examples
 

@@ -7,6 +7,83 @@ defmodule ExFastembedIntegrationTest do
   @moduletag :integration
   @moduletag timeout: 300_000
 
+  setup do
+    on_exit(fn ->
+      ExFastembed.unload()
+      ExFastembed.unload_reranker()
+    end)
+
+    :ok
+  end
+
+  test "unload releases sessions independently, keeps files, and supports reloading" do
+    assert {:ok, 384} = ExFastembed.load("BGESmallENV15")
+    assert {:ok, true} = ExFastembed.load_reranker("JINARerankerV1TurboEn")
+    assert {:ok, models} = ExFastembed.loaded_models()
+    assert Enum.map(models, & &1.kind) == [:embedding, :reranker]
+    assert Enum.all?(models, & &1.loaded)
+    assert Enum.all?(models, &(&1.variant_bytes > 0 and &1.disk_bytes > 0))
+
+    assert {:ok, true} = ExFastembed.unload()
+    assert {:error, _} = ExFastembed.embed_text(["unloaded"])
+
+    assert {:ok, %{loaded: false, cached: true}} =
+             ExFastembed.model_info("BGESmallENV15", :embedding)
+
+    assert {:ok, [_]} = ExFastembed.rerank("query", ["document"], false)
+    assert {:ok, [%{kind: :reranker}]} = ExFastembed.loaded_models()
+
+    assert {:ok, 384} = ExFastembed.load("BGESmallENV15")
+    assert {:ok, true} = ExFastembed.unload_reranker()
+    assert {:error, _} = ExFastembed.rerank("query", ["document"], false)
+    assert {:ok, vectors} = ExFastembed.embed_text(["reloaded"])
+    assert_embeddings(vectors, 1, 384)
+    assert {:ok, [%{kind: :embedding}]} = ExFastembed.loaded_models()
+  end
+
+  test "deletion unloads matching sessions and tracks changes of cache root" do
+    assert {:ok, 384} = ExFastembed.load("BGESmallENV15")
+    assert {:ok, true} = ExFastembed.load_reranker("JINARerankerV1TurboEn")
+    assert {:ok, original} = ExFastembed.model_info("BGESmallENV15", :embedding)
+    original_cache = System.get_env("FASTEMBED_CACHE_DIR")
+    cache = Path.join(System.tmp_dir!(), "fastembed-delete-#{System.unique_integer([:positive])}")
+    File.mkdir_p!(cache)
+
+    try do
+      System.put_env("FASTEMBED_CACHE_DIR", cache)
+
+      assert {:ok, %{loaded: false, cached: false}} =
+               ExFastembed.model_info("BGESmallENV15", :embedding)
+
+      assert {:ok, loaded} = ExFastembed.loaded_models()
+      assert Enum.find(loaded, &(&1.kind == :embedding)).path == original.path
+      assert {:ok, true} = ExFastembed.delete_model("BGESmallENV15", :embedding)
+      assert {:ok, [_]} = ExFastembed.embed_text(["original cache still loaded"])
+
+      destination = Path.join(cache, Path.basename(original.path))
+      File.cp_r!(original.path, destination)
+      assert {:ok, 384} = ExFastembed.load("BGESmallENV15")
+
+      assert {:ok, %{loaded: true, path: ^destination}} =
+               ExFastembed.model_info("BGESmallENV15", :embedding)
+
+      assert {:ok, true} = ExFastembed.delete_model("BGESmallENV15", :embedding)
+      assert {:error, _} = ExFastembed.embed_text(["deleted"])
+      assert {:ok, [_]} = ExFastembed.rerank("query", ["document"], false)
+      assert {:ok, [%{kind: :reranker}]} = ExFastembed.loaded_models()
+      refute File.exists?(destination)
+      assert File.dir?(original.path)
+    after
+      if original_cache,
+        do: System.put_env("FASTEMBED_CACHE_DIR", original_cache),
+        else: System.delete_env("FASTEMBED_CACHE_DIR")
+
+      ExFastembed.unload()
+      ExFastembed.unload_reranker()
+      File.rm_rf!(cache)
+    end
+  end
+
   test "download task populates an empty cache and produces a usable embedding model" do
     original_cache = System.get_env("FASTEMBED_CACHE_DIR")
 

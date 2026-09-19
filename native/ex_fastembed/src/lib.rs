@@ -1,12 +1,16 @@
 use fastembed::{
     EmbeddingModel, RerankInitOptions, RerankerModel, TextEmbedding, TextInitOptions, TextRerank,
 };
-use std::sync::{Mutex, OnceLock};
+use runtime::{Identity, Slot};
+use std::sync::RwLock;
 
 mod cache;
+mod runtime;
 
-static EMBED_MODEL: OnceLock<Mutex<Option<TextEmbedding>>> = OnceLock::new();
-static RERANKER: OnceLock<Mutex<Option<TextRerank>>> = OnceLock::new();
+static EMBED_MODEL: Slot<TextEmbedding> = Slot::new();
+static RERANKER: Slot<TextRerank> = Slot::new();
+// Loads share this lock; repository deletion is exclusive across both families.
+static CACHE_ACCESS: RwLock<()> = RwLock::new(());
 
 const LEGACY_EMBEDDING_ALIASES: &[(&str, EmbeddingModel)] = &[
     ("BAAI/bge-small-en-v1.5", EmbeddingModel::BGESmallENV15),
@@ -106,26 +110,37 @@ fn supported_reranker_model_names() -> Vec<String> {
     sorted_unique_names(names)
 }
 
+#[rustler::nif(schedule = "DirtyIo")]
+fn unload() -> Result<bool, String> {
+    EMBED_MODEL.unload()
+}
+
+#[rustler::nif(schedule = "DirtyIo")]
+fn unload_reranker() -> Result<bool, String> {
+    RERANKER.unload()
+}
+
 #[rustler::nif(schedule = "DirtyCpu")]
 fn load(model_name: String, cache_dir: String) -> Result<i64, String> {
     let model = resolve_embedding_model(&model_name)?;
-    let info = TextEmbedding::get_model_info(&model)
-        .map_err(|_| format!("No recognized info for {model_name}"))?;
+    let info = TextEmbedding::get_model_info(&model).map_err(|e| e.to_string())?;
     let dimension = info.dim as i64;
-    let cache_dir = cache::prepare_model_files(
-        cache_dir,
-        &info.model_code,
-        &info.model_file,
-        &info.additional_files,
-    )?;
-    let text_embedding =
-        TextEmbedding::try_new(TextInitOptions::new(model).with_cache_dir(cache_dir))
-            .map_err(|error| error.to_string())?;
-    let model_slot = EMBED_MODEL.get_or_init(|| Mutex::new(None));
-    let mut model_slot = model_slot.lock().map_err(|error| error.to_string())?;
-
-    *model_slot = Some(text_embedding);
-
+    let _cache_guard = CACHE_ACCESS.read().map_err(|e| e.to_string())?;
+    let identity = Identity {
+        name: model.to_string(),
+        repository: info.model_code.clone(),
+        cache_dir: cache::effective_cache_dir(cache_dir.clone()),
+    };
+    EMBED_MODEL.load(identity, || {
+        let cache_dir = cache::prepare_model_files(
+            cache_dir,
+            &info.model_code,
+            &info.model_file,
+            &info.additional_files,
+        )?;
+        TextEmbedding::try_new(TextInitOptions::new(model.clone()).with_cache_dir(cache_dir))
+            .map_err(|e| e.to_string())
+    })?;
     Ok(dimension)
 }
 
@@ -134,39 +149,31 @@ fn embed_text(texts: Vec<String>) -> Result<Vec<Vec<f32>>, String> {
     if texts.is_empty() {
         return Ok(Vec::new());
     }
-
-    let model_slot = EMBED_MODEL
-        .get()
-        .ok_or_else(|| "No model loaded. Call load/1 first.".to_string())?;
-    let mut model_slot = model_slot.lock().map_err(|error| error.to_string())?;
-    let model = model_slot
-        .as_mut()
-        .ok_or_else(|| "No model loaded. Call load/1 first.".to_string())?;
-
-    model.embed(texts, None).map_err(|error| error.to_string())
+    EMBED_MODEL.with_model("No model loaded. Call load/1 first.", |model| {
+        model.embed(texts, None).map_err(|e| e.to_string())
+    })
 }
 
 #[rustler::nif(schedule = "DirtyCpu")]
 fn load_reranker(model_name: String, cache_dir: String) -> Result<bool, String> {
     let model = resolve_reranker_model(&model_name)?;
     let info = TextRerank::get_model_info(&model);
-    let cache_dir = cache::prepare_model_files(
-        cache_dir,
-        &info.model_code,
-        &info.model_file,
-        &info.additional_files,
-    )?;
-    let reranker = TextRerank::try_new(
-        RerankInitOptions::new(model)
-            .with_cache_dir(cache_dir)
-            .with_show_download_progress(true),
-    )
-    .map_err(|error| error.to_string())?;
-    let reranker_slot = RERANKER.get_or_init(|| Mutex::new(None));
-    let mut reranker_slot = reranker_slot.lock().map_err(|error| error.to_string())?;
-
-    *reranker_slot = Some(reranker);
-
+    let _cache_guard = CACHE_ACCESS.read().map_err(|e| e.to_string())?;
+    let identity = Identity {
+        name: format!("{:?}", model),
+        repository: info.model_code.clone(),
+        cache_dir: cache::effective_cache_dir(cache_dir.clone()),
+    };
+    RERANKER.load(identity, || {
+        let cache_dir = cache::prepare_model_files(
+            cache_dir,
+            &info.model_code,
+            &info.model_file,
+            &info.additional_files,
+        )?;
+        TextRerank::try_new(RerankInitOptions::new(model).with_cache_dir(cache_dir))
+            .map_err(|e| e.to_string())
+    })?;
     Ok(true)
 }
 
@@ -179,23 +186,17 @@ fn rerank(
     if documents.is_empty() {
         return Ok(Vec::new());
     }
-
-    let reranker_slot = RERANKER
-        .get()
-        .ok_or_else(|| "No reranker loaded. Call load_reranker/1 first.".to_string())?;
-    let mut reranker_slot = reranker_slot.lock().map_err(|error| error.to_string())?;
-    let reranker = reranker_slot
-        .as_mut()
-        .ok_or_else(|| "No reranker loaded. Call load_reranker/1 first.".to_string())?;
-    reranker
-        .rerank(query, documents, return_docs, None)
-        .map(|results| {
-            results
-                .into_iter()
-                .map(|result| (result.index, result.score, result.document))
-                .collect()
-        })
-        .map_err(|error| error.to_string())
+    RERANKER.with_model("No reranker loaded. Call load_reranker/1 first.", |model| {
+        model
+            .rerank(query, documents, return_docs, None)
+            .map(|results| {
+                results
+                    .into_iter()
+                    .map(|result| (result.index, result.score, result.document))
+                    .collect()
+            })
+            .map_err(|e| e.to_string())
+    })
 }
 
 fn resolve_embedding_model(model_name: &str) -> Result<EmbeddingModel, String> {

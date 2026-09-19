@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.1.1
+
+- Upgrade fastembed-rs from 6.1.0 to 7.0.1, retaining ONNX Runtime bindings 2.0.0-rc.13.
+- Add idempotent `unload/0` and `unload_reranker/0`, releasing native sessions and buffers after active operations finish.
+- Serialize loading, inference, and unloading per model family; failed loads preserve the existing session.
+- Add `cache_directory/0` and `loaded_models/0`, tracking each loaded model's original cache root.
+- Extend catalog metadata with loaded state, cache and repository paths, revision, required files, per-file sizes, variant bytes, and repository disk bytes.
+- Add `delete_model/2` to unload matching sessions and remove all cached variants of a repository without following symlinks.
+- Show paths and sizes in `mix fastembed.models`, with a new `--loaded` filter.
+- Keep request queues, cancellation, and admission control in the application.
+
 ## 0.1.0
 
 First Hex release, with local text embeddings and document reranking.

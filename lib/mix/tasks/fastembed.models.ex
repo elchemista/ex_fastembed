@@ -6,11 +6,13 @@ defmodule Mix.Tasks.Fastembed.Models do
   Lists supported models, marking complete local downloads as `cached`.
 
       mix fastembed.models
+      mix fastembed.models --loaded
       mix fastembed.models --cached
       mix fastembed.models --type reranker
 
   Options:
 
+    * `--loaded` — only show variants loaded from the current cache root.
     * `--cached` — only show models with all required files present.
     * `--type embedding|reranker` — filter by model family.
 
@@ -25,24 +27,18 @@ defmodule Mix.Tasks.Fastembed.Models do
   @impl Mix.Task
   @spec run([String.t()]) :: :ok
   def run(args) do
-    {opts, rest} = OptionParser.parse!(args, strict: [cached: :boolean, type: :string])
+    {opts, rest} =
+      OptionParser.parse!(args, strict: [cached: :boolean, loaded: :boolean, type: :string])
 
     if rest != [] or opts[:type] not in [nil, "embedding", "reranker"] do
-      Mix.raise("Usage: mix fastembed.models [--cached] [--type embedding|reranker]")
+      Mix.raise("Usage: mix fastembed.models [--cached] [--loaded] [--type embedding|reranker]")
     end
 
     Mix.Task.run("app.start")
 
-    models =
-      Enum.filter(ExFastembed.models(), fn model ->
-        (opts[:cached] != true or model.cached) and
-          (is_nil(opts[:type]) or Atom.to_string(model.kind) == opts[:type])
-      end)
+    models = Enum.filter(ExFastembed.models(), &matches?(&1, opts))
 
-    cache_dir =
-      System.get_env("HF_HOME") || System.get_env("FASTEMBED_CACHE_DIR", ".fastembed_cache")
-
-    Mix.shell().info("Cache: #{Path.expand(cache_dir)}")
+    Mix.shell().info("Cache: #{ExFastembed.cache_directory()}")
 
     rows =
       Enum.map(models, fn model ->
@@ -51,13 +47,27 @@ defmodule Mix.Tasks.Fastembed.Models do
           Atom.to_string(model.kind),
           to_string(model.dimension || "-"),
           model.name,
-          model.repository
+          model.repository,
+          to_string(model.loaded),
+          to_string(model.variant_bytes || "-"),
+          to_string(model.disk_bytes || "-"),
+          model.path
         ]
       end)
 
-    print_table([~w(STATUS TYPE DIM MODEL REPOSITORY) | rows])
+    print_table([
+      ~w(STATUS TYPE DIM MODEL REPOSITORY LOADED VARIANT_BYTES DISK_BYTES PATH) | rows
+    ])
+
     Mix.shell().info("#{length(models)} models shown; #{Enum.count(models, & &1.cached)} cached.")
     :ok
+  end
+
+  @spec matches?(ExFastembed.model_info(), keyword()) :: boolean()
+  defp matches?(model, opts) do
+    (opts[:cached] != true or model.cached) and
+      (opts[:loaded] != true or model.loaded) and
+      (is_nil(opts[:type]) or Atom.to_string(model.kind) == opts[:type])
   end
 
   @spec print_table([[String.t()]]) :: :ok

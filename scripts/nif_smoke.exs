@@ -5,6 +5,11 @@ defmodule ExFastembed.Native do
 
   for {name, arity} <- [
         models: 1,
+        cache_directory: 1,
+        loaded_models: 0,
+        unload: 0,
+        unload_reranker: 0,
+        delete_model: 3,
         model_info: 3,
         embed_models: 0,
         reranker_models: 0,
@@ -31,4 +36,10 @@ Code.require_file("../lib/ex_fastembed.ex", __DIR__)
 true = Enum.all?(embedding, &is_float/1)
 {:ok, %{cached: true}} = ExFastembed.model_info("BGESmallENV15", :embedding)
 
-IO.puts("Precompiled NIF: model discovery, loading, cache, and embedding inference passed")
+{:ok, [%{loaded: true, kind: :embedding}]} = ExFastembed.loaded_models()
+{:ok, true} = ExFastembed.unload()
+{:ok, []} = ExFastembed.loaded_models()
+{:error, _} = ExFastembed.embed_text(["Unloaded"])
+{:ok, %{cached: true, loaded: false}} = ExFastembed.model_info("BGESmallENV15", :embedding)
+
+IO.puts("Precompiled NIF: discovery, inference, cache metadata, and unload passed")

@@ -48,7 +48,11 @@ true = Enum.all?(embedding, &is_float/1)
 {:ok, %{cached: true}} = ExFastembed.model_info("BGESmallENV15", :embedding)
 Mix.Task.run("fastembed.models", ["--cached"])
 Mix.Task.run("fastembed.download", ["BGESmallENV15"])
-IO.puts("Precompiled Hex package: inference and model tasks passed without Rust")
+{:ok, [%{loaded: true}]} = ExFastembed.loaded_models()
+{:ok, true} = ExFastembed.unload()
+{:ok, []} = ExFastembed.loaded_models()
+{:error, _} = ExFastembed.embed_text(["Unloaded"])
+IO.puts("Precompiled Hex package: inference, model tasks, and unload passed without Rust")
 ELIXIR
 
 unset EX_FASTEMBED_BUILD RUSTLER_PRECOMPILED_FORCE_BUILD_ALL MIX_DEPS_PATH MIX_BUILD_PATH

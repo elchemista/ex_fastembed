@@ -75,7 +75,32 @@ jobs:
       - run: cargo clippy --locked --all-targets --all-features -- -D warnings
         working-directory: native/ex_fastembed
       - name: Check Hex package
+        if: matrix.rust == 'stable'
+        run: mix hex.build
+      - name: Check published NIF checksums
         if: matrix.rust == 'stable' && hashFiles('checksum-Elixir.ExFastembed.Native.exs') != ''
+        run: elixir scripts/checksums.exs --check
+      - name: Cache integration model downloads
+        if: matrix.rust == 'stable'
+        uses: actions/cache@v6.1.0
+        with:
+          path: .fastembed_cache
+          key: models-${{ runner.os }}-${{ hashFiles('native/ex_fastembed/Cargo.lock') }}
+      - name: Install native coverage tools
+        if: matrix.rust == 'stable'
         run: |
-          elixir scripts/checksums.exs --check
-          mix hex.build
+          rustup component add llvm-tools-preview
+          cargo install cargo-llvm-cov --version 0.8.7 --locked
+      - name: Verify Elixir and Rust coverage with real inference
+        if: matrix.rust == 'stable'
+        run: bash scripts/coverage.sh
+      - name: Test packaged sources in a production consumer
+        if: matrix.rust == 'stable'
+        run: bash scripts/package_smoke.sh --source
+      - name: Upload coverage reports
+        if: always() && matrix.rust == 'stable'
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: coverage-reports
+          path: cover/
+          if-no-files-found: warn

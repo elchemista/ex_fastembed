@@ -1,6 +1,6 @@
 [package]
 name = "ex_fastembed"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["Yuriy Zhar"]
 license = "Apache-2.0"
 repository = "https://github.com/elchemista/ex_fastembed"
@@ -14,7 +14,7 @@ path = "src/lib.rs"
 crate-type = ["cdylib"]
 
 [dependencies]
-fastembed = { version = "6.1.0", default-features = false, features = ["hf-hub-native-tls", "ort-download-binaries-native-tls"] }
+fastembed = { version = "7.0.1", default-features = false, features = ["hf-hub-native-tls", "ort-download-binaries-native-tls"] }
 hf-hub = { version = "0.5.0", default-features = false }
 rustler = { version = "0.38.0", default-features = false }
 

@@ -3,12 +3,15 @@
 Local text embeddings and document reranking for Elixir, powered by
 [FastEmbed](https://github.com/Anush008/fastembed-rs) and ONNX Runtime.
 
+For lifecycle examples, file-size definitions, and safe removal of downloads,
+see [model memory, files, and lifecycle](guides/model_lifecycle.md).
+
 ## Installation
 
 Add the dependency to `mix.exs`:
 
 ```elixir
-{:ex_fastembed, "~> 0.1.0"}
+{:ex_fastembed, "~> 0.1.1"}
 ```
 
 Requires **Elixir 1.18+**. Precompiled NIFs support Linux x86_64/aarch64
@@ -24,6 +27,8 @@ mix compile
 To build from source, add `{:rustler, "~> 0.38.0", runtime: false}` to your
 application's dependencies and set `EX_FASTEMBED_BUILD=1`. This requires Rust
 1.91+, a C/C++ compiler, and the [platform dependencies](guides/development.md#platforms).
+Git checkouts without matching release NIFs and checksums also require a source
+build. See the [release guide](guides/releasing.md) before publishing a package.
 
 ## Quick start
 
@@ -66,6 +71,46 @@ Elixir. Cache status checks all required files locally without loading a model.
 See the [complete model catalog](guides/models.md) and the
 [API documentation](https://hexdocs.pm/ex_fastembed/ExFastembed.html) for details.
 
+## Unloading from RAM and deleting model files
+
+```elixir
+ExFastembed.cache_directory()                   # Absolute effective cache root
+{:ok, info} = ExFastembed.model_info("BGESmallENV15", :embedding)
+{info.loaded, info.path, info.variant_bytes, info.disk_bytes}
+{:ok, loaded} = ExFastembed.loaded_models()       # Includes original cache locations
+
+{:ok, true} = ExFastembed.unload()                # Embedding session only; keeps files
+{:ok, true} = ExFastembed.unload_reranker()       # Reranker session only; keeps files
+# Unloads the model and physically deletes its downloaded files from disk.
+{:ok, true} = ExFastembed.delete_model("BGESmallENV15", :embedding)
+```
+
+`models/0` and `model_info/2` include the required `files`, per-file snapshot paths
+and byte sizes in `file_details`, and the cached revision. `variant_bytes` is the
+sum of all required files, or `nil` for an incomplete download. `disk_bytes` is the
+repository's regular file bytes across all variants and revisions, including
+partial downloads; snapshot symlinks are not counted twice. Deduplicate by `path`
+when summing repositories. Sizes describe local storage, not RAM consumption or
+remote download sizes. `mix fastembed.models --loaded` filters loaded variants in
+the current cache and shows paths and byte sizes.
+
+Unloading waits for active native work and drops the ONNX session and its owned
+buffers. The allocator may retain freed pages, so RSS may not fall immediately.
+Previously returned vectors remain owned by their BEAM processes. **Applications
+own request queues**: stop submitting work and drain your queue before unloading
+or deleting. The library serializes native operations and does not cancel jobs;
+concurrent operations have no guaranteed ordering.
+
+`unload/0` and `unload_reranker/0` release native sessions from RAM and keep all
+model files on disk. `delete_model/2` unloads matching sessions and physically
+deletes the repository directory, including ONNX weights, tokenizer/config files,
+blobs, partial downloads, and **all of its variants and revisions**. The cache
+is the directory containing the actual downloaded model files. Other
+repositories and models loaded from different cache roots are preserved. Loads
+and deletion are coordinated within this VM; coordinate other cache users in the
+application. Repository symlinks are rejected. A filesystem error can leave a
+partially removed repository; fix the error and retry.
+
 ## Development
 
 ```bash
@@ -73,6 +118,9 @@ EX_FASTEMBED_BUILD=1 mix test --cover
 EX_FASTEMBED_BUILD=1 mix test --include integration --cover
 EX_FASTEMBED_BUILD=1 mix docs --warnings-as-errors
 ```
+
+Both Elixir and Rust line coverage must meet a **90% minimum**. Run
+`bash scripts/coverage.sh` for the combined native and real-inference report.
 
 The default suite runs without downloading models. Integration tests exercise real
 embedding and reranking. See [development and coverage](guides/development.md) and

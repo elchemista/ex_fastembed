@@ -18,6 +18,28 @@ defmodule ExFastembed.Native do
     nif_versions: ["2.15", "2.16"]
 
   @doc false
+  @spec cache_directory(String.t()) :: String.t()
+  def cache_directory(_cache_dir), do: :erlang.nif_error("NIF cache_directory/1 not loaded")
+
+  @doc false
+  @spec loaded_models() :: {:ok, [ExFastembed.model_info()]} | ExFastembed.error()
+  def loaded_models, do: :erlang.nif_error("NIF loaded_models/0 not loaded")
+
+  @doc false
+  @spec unload() :: {:ok, true} | ExFastembed.error()
+  def unload, do: :erlang.nif_error("NIF unload/0 not loaded")
+
+  @doc false
+  @spec unload_reranker() :: {:ok, true} | ExFastembed.error()
+  def unload_reranker, do: :erlang.nif_error("NIF unload_reranker/0 not loaded")
+
+  @doc false
+  @spec delete_model(String.t(), ExFastembed.model_kind(), String.t()) ::
+          {:ok, true} | ExFastembed.error()
+  def delete_model(_name, _kind, _cache_dir),
+    do: :erlang.nif_error("NIF delete_model/3 not loaded")
+
+  @doc false
   @spec models(String.t()) :: [ExFastembed.model_info()]
   def models(_cache_dir), do: :erlang.nif_error("NIF models/1 not loaded")
 

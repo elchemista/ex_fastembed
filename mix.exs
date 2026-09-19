@@ -1,7 +1,7 @@
 defmodule ExFastembed.MixProject do
   use Mix.Project
 
-  @version "0.1.0"
+  @version "0.1.1"
   @source_url "https://github.com/elchemista/ex_fastembed"
 
   @doc false
@@ -53,24 +53,28 @@ defmodule ExFastembed.MixProject do
     [
       name: "ex_fastembed",
       maintainers: ["Yuriy Zhar"],
-      files: ~w(
-        lib
-        mix.exs
-        README.md
-        CHANGELOG.md
-        LICENSE
-        checksum-*.exs
-        guides
-        native/ex_fastembed/Cargo.toml
-        native/ex_fastembed/Cargo.lock
-        native/ex_fastembed/.cargo
-        native/ex_fastembed/src
-      ),
+      files: package_files(),
       licenses: ["Apache-2.0"],
       links: %{
         "GitHub" => @source_url
       }
     ]
+  end
+
+  @spec package_files() :: [String.t()]
+  defp package_files do
+    ~w(
+      lib
+      mix.exs
+      README.md
+      CHANGELOG.md
+      LICENSE
+      guides
+      native/ex_fastembed/Cargo.toml
+      native/ex_fastembed/Cargo.lock
+      native/ex_fastembed/.cargo
+      native/ex_fastembed/src
+    ) ++ Path.wildcard("checksum-*.exs")
   end
 
   @spec docs() :: keyword()
@@ -81,6 +85,7 @@ defmodule ExFastembed.MixProject do
       extras: [
         "README.md",
         "guides/models.md",
+        "guides/model_lifecycle.md",
         "guides/development.md",
         "guides/releasing.md",
         "CHANGELOG.md",
@@ -91,6 +96,7 @@ defmodule ExFastembed.MixProject do
       ],
       groups_for_docs: [
         "Model discovery": &(&1[:group] == :discovery),
+        "Model lifecycle": &(&1[:group] == :lifecycle),
         Embeddings: &(&1[:group] == :embeddings),
         Reranking: &(&1[:group] == :reranking)
       ]

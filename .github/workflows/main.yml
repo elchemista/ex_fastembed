@@ -113,15 +113,13 @@ jobs:
             echo "library-path=$RUNNER_TEMP/$library"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Install BEAM for the Windows runtime check
-        if: runner.os == 'Windows'
+      - name: Install BEAM for the runtime check
         uses: erlef/setup-beam@v1.24.1
         with:
           elixir-version: '1.18'
           otp-version: '27'
 
-      - name: Verify Windows NIF loading and embedding inference
-        if: runner.os == 'Windows'
+      - name: Verify NIF loading, inference, and unloading
         shell: bash
         env:
           NIF_PATH: ${{ steps.build-crate.outputs.library-path }}

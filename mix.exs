@@ -21,6 +21,7 @@ defmodule ExFastembed.MixProject do
         ignore_modules: [ExFastembed.Native]
       ],
       deps: deps(),
+      aliases: ["hex.publish": [&verify_release_checksums/1, "hex.publish"]],
       description: description(),
       package: package(),
       rustler_precompiled: [
@@ -74,7 +75,18 @@ defmodule ExFastembed.MixProject do
       native/ex_fastembed/Cargo.lock
       native/ex_fastembed/.cargo
       native/ex_fastembed/src
+      scripts/checksums.exs
     ) ++ Path.wildcard("checksum-*.exs")
+  end
+
+  @spec verify_release_checksums([String.t()]) :: :ok
+  defp verify_release_checksums(_args) do
+    script = Path.join(__DIR__, "scripts/checksums.exs")
+    {output, status} = System.cmd("elixir", [script, "--check"], stderr_to_stdout: true)
+
+    if status != 0, do: Mix.raise("Release checksum validation failed:\n#{output}")
+    Mix.shell().info(String.trim(output))
+    :ok
   end
 
   @spec docs() :: keyword()
@@ -106,6 +118,8 @@ defmodule ExFastembed.MixProject do
   @spec deps() :: [tuple()]
   defp deps do
     [
+      # This Mix compiler invokes Cargo; the native Rustler version is selected
+      # in Cargo.toml. Their compatibility is tested by the source-package smoke test.
       {:rustler, "~> 0.38.0", optional: true, runtime: false},
       {:rustler_precompiled, "~> 0.10.0"},
       {:credo, "~> 1.7.19", only: [:dev, :test], runtime: false},

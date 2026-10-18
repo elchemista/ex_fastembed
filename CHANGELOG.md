@@ -2,6 +2,10 @@
 
 ## 0.1.2
 
+- Recover from Rust initialization, inference, and cleanup panics without permanently poisoning the runtime; preserve previous sessions on initialization failures and discard sessions whose inference panics.
+- Guard `mix hex.publish` with mandatory checksum validation, including offline tests for missing, stale, and malformed maps before the Hex task runs.
+- Repair orphaned snapshots when `refs/main` is absent, omit invalid revisions from metadata, and explain recovery through `delete_model/2` for unusable cached revisions.
+- Clarify that loading, inference, and state inspection remain serialized in this release.
 - Upgrade fastembed-rs to 7.1.1, the native Rustler crate to 0.39.0, and RustlerPrecompiled to 0.10.0; refresh the compatible Rust and Hex dependency lockfiles. RustlerPrecompiled includes the fix for replacing a NIF library while another process is using it.
 - Retain the Rust 1.91 minimum, the Rustler 0.38 Mix compiler, and ONNX Runtime bindings 2.0.0-rc.13. Keep hf-hub 0.5 compatible with FastEmbed's cache API.
 - Adopt the corrected `JINARerankerV2BaseMultilingual` name while preserving the old `JINARerankerV2BaseMultiligual` variant and repository aliases. Model metadata now returns the corrected name.

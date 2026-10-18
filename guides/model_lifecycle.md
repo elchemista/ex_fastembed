@@ -24,6 +24,14 @@ unload first if you prefer to free memory before loading another model.
 A non-empty inference call after unloading returns an error until you load a
 model again. Empty inputs continue to return `{:ok, []}`.
 
+Recoverable Rust panics return error tuples without requiring a VM restart.
+An initialization panic preserves the previous session. An inference panic removes
+the affected session because its internal state may be inconsistent; reload it
+before retrying. A cleanup panic during unload leaves the slot empty. If cleanup
+of the old session panics after a successful replacement, the error explicitly
+states that the new model is already loaded. These guarantees concern Rust
+unwinding, not process aborts or native crashes.
+
 ## Load, use, and release RAM
 
 ```elixir
@@ -154,6 +162,28 @@ unload. Native inference already running is allowed to finish. Deletion excludes
 library loads across both families while it unloads matching sessions and removes
 the files. These protections are local to one VM; coordinate other VMs or tools
 using the same directory separately.
+
+During a load, including its downloads, inference on the previous model and
+state inspection (`models/0`, `model_info/2`, `loaded_models/0`) can wait for the
+slot lock. Preserving the previous session on failed initialization does not
+provide simultaneous inference while a replacement loads.
+
+## Recover an unusable cache
+
+Missing files, empty snapshot files, and dangling snapshot links are repaired
+when loading, including snapshots left behind without `refs/main`. An invalid
+cached revision is reported as `nil` in metadata and rejected during loading.
+If the saved revision is malformed or no longer exists on Hugging Face, remove
+that repository and retry:
+
+```elixir
+{:ok, true} = ExFastembed.delete_model("BGESmallENV15", :embedding)
+{:ok, 384} = ExFastembed.load("BGESmallENV15")
+```
+
+This physically deletes all cached variants and revisions in that repository.
+Coordinate application requests before deletion as described above. The library
+does not silently switch an incomplete download to another revision.
 
 ## Command-line discovery
 

@@ -5,7 +5,7 @@ use fastembed::{
     EmbeddingModel, RerankInitOptions, RerankerModel, TextEmbedding, TextInitOptions, TextRerank,
 };
 use runtime::{Identity, Slot};
-use std::sync::RwLock;
+use std::sync::{PoisonError, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 mod cache;
 mod runtime;
@@ -14,6 +14,15 @@ static EMBED_MODEL: Slot<TextEmbedding> = Slot::new();
 static RERANKER: Slot<TextRerank> = Slot::new();
 // Loads share this lock; repository deletion is exclusive across both families.
 static CACHE_ACCESS: RwLock<()> = RwLock::new(());
+
+// This lock is an exclusion gate with no protected data to invalidate.
+fn cache_read() -> RwLockReadGuard<'static, ()> {
+    CACHE_ACCESS.read().unwrap_or_else(PoisonError::into_inner)
+}
+
+fn cache_write() -> RwLockWriteGuard<'static, ()> {
+    CACHE_ACCESS.write().unwrap_or_else(PoisonError::into_inner)
+}
 
 const LEGACY_EMBEDDING_ALIASES: &[(&str, EmbeddingModel)] = &[
     ("BAAI/bge-small-en-v1.5", EmbeddingModel::BGESmallENV15),
@@ -132,7 +141,7 @@ fn load(model_name: String, cache_dir: String) -> Result<i64, String> {
     let model = resolve_embedding_model(&model_name)?;
     let info = TextEmbedding::get_model_info(&model).map_err(|e| e.to_string())?;
     let dimension = info.dim as i64;
-    let _cache_guard = CACHE_ACCESS.read().map_err(|e| e.to_string())?;
+    let _cache_guard = cache_read();
     let identity = Identity {
         name: model.to_string(),
         repository: info.model_code.clone(),
@@ -165,7 +174,7 @@ fn embed_text(texts: Vec<String>) -> Result<Vec<Vec<f32>>, String> {
 fn load_reranker(model_name: String, cache_dir: String) -> Result<bool, String> {
     let model = resolve_reranker_model(&model_name)?;
     let info = TextRerank::get_model_info(&model);
-    let _cache_guard = CACHE_ACCESS.read().map_err(|e| e.to_string())?;
+    let _cache_guard = cache_read();
     let identity = Identity {
         name: format!("{:?}", model),
         repository: info.model_code.clone(),

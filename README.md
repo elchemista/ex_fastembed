@@ -64,7 +64,7 @@ Elixir. Cache status checks all required files locally without loading a model.
 
 - List accepted names with `ExFastembed.embed_models/0` and `ExFastembed.reranker_models/0`.
 - Names are case-insensitive. Explicit variants such as `EmbeddingGemma300MQ4` select quantization.
-- Each VM shares one embedding model and one reranker. Loading another replaces it for all processes; failed loads preserve the previous model.
+- Each VM shares one embedding model and one reranker. Loading another replaces it for all processes; failed initialization preserves the previous model.
 - Model files download on first use and are cached in `.fastembed_cache`. Set `FASTEMBED_CACHE_DIR` to change the location; an exported `HF_HOME` takes precedence.
 - Empty input lists return `{:ok, []}`. Invalid input and inference failures return `{:error, reason}`.
 

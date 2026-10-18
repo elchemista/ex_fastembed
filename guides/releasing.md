@@ -9,6 +9,12 @@ The 0.1.2 source branch requires `EX_FASTEMBED_BUILD=1` until its native release
 artifacts are published. The 0.1.1 checksum map has been removed; generate and
 commit the new map from the actual 0.1.2 archives before publishing to Hex.
 
+The `hex.publish` alias validates the complete checksum map before invoking Hex,
+including for dry runs and documentation publishing. Missing, stale, or malformed
+checksums stop publication before authentication or upload. `mix hex.build`
+remains available without checksums for source validation. Offline tests exercise
+this guard with a simulated publish task.
+
 ## 1. Verify the source
 
 Keep `mix.exs`, `native/ex_fastembed/Cargo.toml`, the native lockfile,

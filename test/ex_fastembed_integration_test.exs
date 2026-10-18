@@ -167,6 +167,52 @@ defmodule ExFastembedIntegrationTest do
     end)
   end
 
+  test "loading without refs/main repairs orphaned snapshots before downloading weights" do
+    name = "AllMiniLML6V2Q"
+    assert {:ok, 384} = ExFastembed.load(name)
+    {:ok, original} = ExFastembed.model_info(name, :embedding)
+    original_cache = System.get_env("FASTEMBED_CACHE_DIR")
+    cache = Path.join(System.tmp_dir!(), "fastembed-orphan-#{System.unique_integer([:positive])}")
+    destination = Path.join(cache, Path.basename(original.path))
+    cases = if match?({:unix, _}, :os.type()), do: [:empty, :dangling], else: [:empty]
+
+    try do
+      for damage <- cases do
+        File.mkdir_p!(cache)
+        File.cp_r!(original.path, destination)
+        File.rm!(Path.join(destination, "refs/main"))
+
+        weights =
+          Path.join([destination, "snapshots", original.revision, "onnx/model_quantized.onnx"])
+
+        File.rm!(weights)
+
+        if damage == :empty,
+          do: File.write!(weights, ""),
+          else: File.ln_s!("missing-weights", weights)
+
+        System.put_env("FASTEMBED_CACHE_DIR", cache)
+        assert {:ok, 384} = ExFastembed.load(name)
+
+        assert {:ok, %{cached: true, revision: revision}} =
+                 ExFastembed.model_info(name, :embedding)
+
+        assert is_binary(revision)
+        assert {:ok, vectors} = ExFastembed.embed_text(["Recovered snapshot"])
+        assert_embeddings(vectors, 1, 384)
+        ExFastembed.unload()
+        File.rm_rf!(cache)
+      end
+    after
+      if original_cache,
+        do: System.put_env("FASTEMBED_CACHE_DIR", original_cache),
+        else: System.delete_env("FASTEMBED_CACHE_DIR")
+
+      ExFastembed.unload()
+      File.rm_rf!(cache)
+    end
+  end
+
   test "reranker returns sorted scores, document indices, and optional documents" do
     query = "What is the capital of Italy?"
     documents = ["Rome is the capital of Italy.", "Bananas are yellow fruit."]

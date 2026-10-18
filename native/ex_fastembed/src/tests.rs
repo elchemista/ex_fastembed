@@ -1,6 +1,17 @@
 use super::*;
 
 #[test]
+fn a_poisoned_cache_gate_still_allows_loading_and_deletion() {
+    let _ = std::panic::catch_unwind(|| {
+        let _guard = cache_write();
+        panic!("deletion interrupted");
+    });
+    assert!(CACHE_ACCESS.is_poisoned());
+    drop(cache_read());
+    drop(cache_write());
+}
+
+#[test]
 fn advertised_embedding_models_are_sorted_unique_and_resolvable() {
     let models = supported_embedding_model_names();
 

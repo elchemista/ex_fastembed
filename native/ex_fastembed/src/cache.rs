@@ -112,7 +112,7 @@ fn required_files(model_file: &str, additional: &[String]) -> Vec<String> {
     files
 }
 
-fn loaded_identity(kind: ModelKind) -> Result<Option<Identity>, String> {
+fn loaded_identity(kind: ModelKind) -> Option<Identity> {
     match kind {
         ModelKind::Embedding => super::EMBED_MODEL.identity(),
         ModelKind::Reranker => super::RERANKER.identity(),
@@ -133,10 +133,11 @@ fn status(
     let path = cache
         .path()
         .join(Repo::model(repository.into()).folder_name());
+    let revision = cached_revision(&path.join("refs/main")).ok();
     let file_details: Vec<_> = files
         .iter()
         .map(|name| {
-            let path = repo.get(name);
+            let path = revision.as_ref().and_then(|_| repo.get(name));
             let size_bytes = path
                 .as_ref()
                 .and_then(|p| p.metadata().ok())
@@ -150,10 +151,8 @@ fn status(
         })
         .collect();
     let variant_bytes = file_details.iter().map(|f| f.size_bytes).sum();
-    let loaded = loaded_identity(kind)
-        .ok()
-        .flatten()
-        .is_some_and(|id| id.name == name && id.cache_dir == *cache.path());
+    let loaded =
+        loaded_identity(kind).is_some_and(|id| id.name == name && id.cache_dir == *cache.path());
     ModelStatus {
         name,
         kind,
@@ -163,9 +162,7 @@ fn status(
         loaded,
         cache_dir: cache.path().to_string_lossy().into_owned(),
         path: path.to_string_lossy().into_owned(),
-        revision: std::fs::read_to_string(path.join("refs/main"))
-            .ok()
-            .map(|s| s.trim().to_string()),
+        revision,
         files,
         file_details,
         variant_bytes,
@@ -203,7 +200,7 @@ fn cache_directory(cache_dir: String) -> String {
 fn loaded_models() -> Result<Vec<ModelStatus>, String> {
     let mut models = Vec::new();
     for kind in [ModelKind::Embedding, ModelKind::Reranker] {
-        if let Some(identity) = loaded_identity(kind)? {
+        if let Some(identity) = loaded_identity(kind) {
             models.push(lookup_model(
                 identity.name,
                 kind,
@@ -218,7 +215,7 @@ fn loaded_models() -> Result<Vec<ModelStatus>, String> {
 fn delete_model(name: String, kind: ModelKind, cache_dir: String) -> Result<bool, String> {
     // Hold across inspection, unload, and deletion so a concurrent loader cannot
     // recreate the cache or keep a session backed by files being removed.
-    let _guard = super::CACHE_ACCESS.write().map_err(|e| e.to_string())?;
+    let _guard = super::cache_write();
     let info = lookup_model(name, kind, cache_dir)?;
     let directory = PathBuf::from(&info.cache_dir);
     let path = repository_path(&directory, &info.repository)?;
@@ -265,6 +262,13 @@ fn remove_repository(path: &Path) -> Result<(), String> {
 }
 
 fn files_cached(cache: &Cache, repository: &str, model_file: &str, additional: &[String]) -> bool {
+    let reference = cache
+        .path()
+        .join(Repo::model(repository.into()).folder_name())
+        .join("refs/main");
+    if cached_revision(&reference).is_err() {
+        return false;
+    }
     let repo = cache.model(repository.to_string());
     std::iter::once(model_file)
         .chain(TOKENIZER_FILES)
@@ -300,6 +304,10 @@ fn prepare_download_destination(path: &Path) -> std::io::Result<()> {
 
 fn cached_revision(reference: &Path) -> std::io::Result<String> {
     let contents = std::fs::read_to_string(reference)?;
+    validate_revision(&contents)
+}
+
+fn validate_revision(contents: &str) -> std::io::Result<String> {
     let revision = contents.trim();
     if revision.is_empty()
         || matches!(revision, "." | "..")
@@ -344,16 +352,22 @@ pub(crate) fn prepare_model_files(
             .build()?;
         let main = Repo::model(repository.into());
         let reference = directory.join(main.folder_name()).join("refs/main");
-        if !reference.is_file() {
-            api.model(repository.into()).download(model_file)?;
-        }
-
         // Pin missing files to the cached revision. Fetching each file from main
         // can advance refs/main midway and mix weights and tokenizer revisions.
-        let revision = cached_revision(&reference)?;
+        let revision = if reference.is_file() {
+            cached_revision(&reference)?
+        } else {
+            // Resolve main before downloading so an orphaned snapshot can be
+            // repaired even when refs/main has been removed.
+            let metadata = api.metadata(&api.model(repository.into()).url(model_file))?;
+            validate_revision(metadata.commit_hash())?
+        };
         let pinned = Repo::with_revision(repository.into(), RepoType::Model, revision.clone());
         let pinned_cache = cache.repo(pinned.clone());
         pinned_cache.create_ref(&revision)?;
+        // Persist the selected revision before I/O so interrupted first
+        // downloads also resume at the same commit instead of a newer main.
+        cache.repo(main).create_ref(&revision)?;
         let pinned_api = api.repo(pinned);
         for file in std::iter::once(model_file)
             .chain(TOKENIZER_FILES)
@@ -367,7 +381,9 @@ pub(crate) fn prepare_model_files(
         cache.model(repository.into()).create_ref(&revision)?;
         Ok(())
     };
-    download().map_err(|error| error.to_string())?;
+    download().map_err(|error| format!(
+        "{error}. If the cached revision is invalid or unavailable, remove the repository with ExFastembed.delete_model/2 and retry (all cached variants are deleted)."
+    ))?;
     Ok(directory)
 }
 

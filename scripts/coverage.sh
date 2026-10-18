@@ -21,7 +21,7 @@ cargo llvm-cov clean --workspace
 cargo test --release --locked
 
 # Rustler writes its NIF into priv/. Keep that write in a temporary checkout.
-cp -R "$project_root/lib" "$project_root/test" "$project_root/guides" "$coverage_root/"
+cp -R "$project_root/lib" "$project_root/test" "$project_root/guides" "$project_root/scripts" "$coverage_root/"
 cp "$project_root/mix.exs" "$project_root/mix.lock" "$project_root/README.md" "$coverage_root/"
 ln -s "$project_root/native" "$coverage_root/native"
 export MIX_DEPS_PATH="$project_root/deps"

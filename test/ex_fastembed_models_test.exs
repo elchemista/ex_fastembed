@@ -156,8 +156,26 @@ defmodule ExFastembedModelsTest do
 
       assert {:error, message} = loader.(name)
       assert message =~ "Invalid cached model revision"
+      assert message =~ "ExFastembed.delete_model/2"
+
+      assert {:ok, %{revision: nil, cached: false, file_details: files}} =
+               ExFastembed.model_info(name, kind)
+
+      assert Enum.all?(files, &is_nil(&1.path))
       assert File.read!(reference) == "../../outside"
       assert File.read!(outside) == ""
+    end
+  end
+
+  test "metadata omits invalid cached revisions", %{cache: cache} do
+    snapshot = cache_fixture(cache, "Xenova/bge-small-en-v1.5", "onnx/model.onnx")
+    reference = Path.join(Path.dirname(Path.dirname(snapshot)), "refs/main")
+
+    for revision <- ["", "..", "../../outside", "arbitrary\ntext"] do
+      File.write!(reference, revision)
+
+      assert {:ok, %{revision: nil, cached: false, variant_bytes: nil}} =
+               ExFastembed.model_info("BGESmallENV15", :embedding)
     end
   end
 

@@ -1,7 +1,7 @@
 defmodule ExFastembed.MixProject do
   use Mix.Project
 
-  @version "0.1.1"
+  @version "0.1.2"
   @source_url "https://github.com/elchemista/ex_fastembed"
 
   @doc false
@@ -107,7 +107,7 @@ defmodule ExFastembed.MixProject do
   defp deps do
     [
       {:rustler, "~> 0.38.0", optional: true, runtime: false},
-      {:rustler_precompiled, "~> 0.9.0"},
+      {:rustler_precompiled, "~> 0.10.0"},
       {:credo, "~> 1.7.19", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false},
       {:ex_doc, "~> 0.40.4", only: :dev, runtime: false}

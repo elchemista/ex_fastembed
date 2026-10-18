@@ -208,7 +208,16 @@ defmodule ExFastembedIntegrationTest do
     File.mkdir_p!(partial_cache)
     File.cp_r!(Path.join(cache, folder), destination)
     revision = File.read!(Path.join(destination, "refs/main"))
-    File.rm!(Path.join([destination, "snapshots", revision, "config.json"]))
+    config = Path.join([destination, "snapshots", revision, "config.json"])
+    File.rm!(config)
+    # A zero-byte regular snapshot file used to survive every download retry.
+    File.write!(config, "")
+
+    if match?({:unix, _}, :os.type()) do
+      tokenizer_config = Path.join([destination, "snapshots", revision, "tokenizer_config.json"])
+      File.rm!(tokenizer_config)
+      File.ln_s!("missing-blob", tokenizer_config)
+    end
 
     try do
       System.put_env("FASTEMBED_CACHE_DIR", partial_cache)
@@ -216,6 +225,7 @@ defmodule ExFastembedIntegrationTest do
       args = if kind == :reranker, do: [name, "--reranker"], else: [name]
       assert :ok = Download.run(args)
       assert {:ok, %{cached: true}} = ExFastembed.model_info(name, kind)
+      assert File.stat!(config).size > 0
       assert :ok = Download.run(args)
       assert File.read!(Path.join(destination, "refs/main")) == revision
 

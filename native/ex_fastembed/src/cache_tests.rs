@@ -1,6 +1,69 @@
 use super::*;
 
 #[test]
+fn cached_revisions_reject_paths_before_repairing_or_downloading_files() {
+    let root = tempfile::tempdir().unwrap();
+    let reference = root.path().join("main");
+    assert!(cached_revision(&reference).is_err());
+    for revision in [
+        "",
+        " ",
+        ".",
+        "..",
+        "../../outside",
+        "/outside",
+        "a\\b",
+        "a\nb",
+    ] {
+        std::fs::write(&reference, revision).unwrap();
+        assert!(cached_revision(&reference).is_err(), "{revision:?}");
+    }
+    std::fs::write(&reference, "0123456789abcdef\n").unwrap();
+    assert_eq!(cached_revision(&reference).unwrap(), "0123456789abcdef");
+}
+
+#[test]
+fn incomplete_download_destinations_are_repaired_without_removing_valid_files() {
+    let root = tempfile::tempdir().unwrap();
+    let file = root.path().join("config.json");
+    prepare_download_destination(&file).unwrap();
+    assert!(!file.exists());
+    std::fs::write(&file, b"").unwrap();
+    prepare_download_destination(&file).unwrap();
+    assert!(!file.exists());
+    std::fs::write(&file, b"valid").unwrap();
+    prepare_download_destination(&file).unwrap();
+    assert_eq!(std::fs::read(&file).unwrap(), b"valid");
+    std::fs::remove_file(&file).unwrap();
+    std::fs::create_dir(&file).unwrap();
+    std::fs::write(file.join("keep"), b"unrelated").unwrap();
+    assert!(prepare_download_destination(&file).is_err());
+    assert_eq!(std::fs::read(file.join("keep")).unwrap(), b"unrelated");
+}
+
+#[cfg(unix)]
+#[test]
+fn incomplete_snapshot_links_are_unlinked_without_touching_their_targets() {
+    use std::os::unix::fs::symlink;
+    let root = tempfile::tempdir().unwrap();
+    let target = root.path().join("blob");
+    let link = root.path().join("config.json");
+    symlink(&target, &link).unwrap();
+    prepare_download_destination(&link).unwrap();
+    assert!(link.symlink_metadata().is_err());
+    std::fs::write(&target, b"").unwrap();
+    symlink(&target, &link).unwrap();
+    prepare_download_destination(&link).unwrap();
+    assert!(link.symlink_metadata().is_err());
+    assert_eq!(std::fs::read(&target).unwrap(), b"");
+    std::fs::write(&target, b"valid").unwrap();
+    symlink(&target, &link).unwrap();
+    prepare_download_destination(&link).unwrap();
+    assert!(link.symlink_metadata().unwrap().is_symlink());
+    assert_eq!(std::fs::read(&target).unwrap(), b"valid");
+}
+
+#[test]
 fn cache_requires_model_tokenizer_and_external_weights_for_the_selected_variant() {
     let directory = tempfile::tempdir().unwrap();
     let cache = Cache::new(directory.path().to_path_buf());

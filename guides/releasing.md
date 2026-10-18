@@ -5,9 +5,9 @@ Package: `ex_fastembed`. Maintainer: **Yuriy Zhar**. Repository:
 The intended Hex owner is `elchemista`; Hex assigns ownership to the account
 that actually publishes the package.
 
-The 0.1.1 source branch requires `EX_FASTEMBED_BUILD=1` until its native release
-artifacts are published. The 0.1.0 checksum map has been removed; generate and
-commit the new map from the actual 0.1.1 archives before publishing to Hex.
+The 0.1.2 source branch requires `EX_FASTEMBED_BUILD=1` until its native release
+artifacts are published. The 0.1.1 checksum map has been removed; generate and
+commit the new map from the actual 0.1.2 archives before publishing to Hex.
 
 ## 1. Verify the source
 
@@ -32,7 +32,7 @@ static analysis, and a 90% Elixir line coverage floor. Native coverage has a
 ## 2. Publish the native release
 
 Commit and push the release source, then merge it into `master`. On GitHub,
-create and publish the release with tag `v0.1.1` targeting that updated commit.
+create and publish the release with tag `v0.1.2` targeting that updated commit.
 If the tag already exists, verify that it points to the intended release commit.
 ExDoc source links use this tag, which must match the Mix and Cargo versions.
 
@@ -40,8 +40,8 @@ The **Build precompiled NIFs** workflow runs only when a GitHub release is
 published. Branch pushes and pull requests run the separate **Checks** workflow.
 Saving a draft or pushing a tag alone does not start a NIF release build.
 
-The release workflow first checks that the tag is exactly `v0.1.1` and matches
-the Mix and Cargo versions. A tag named `0.1.1` is invalid because the NIF download
+The release workflow first checks that the tag is exactly `v0.1.2` and matches
+the Mix and Cargo versions. A tag named `0.1.2` is invalid because the NIF download
 URLs include the `v` prefix. This check runs before any matrix build starts.
 
 The matrix contains four targets (Linux x86_64/aarch64, macOS Apple Silicon,
@@ -82,7 +82,7 @@ verify the real release download in a fresh consumer without
 `EX_FASTEMBED_BUILD` or a seeded NIF cache.
 
 Push the checksum commit to `master` and publish the Hex package from that
-commit. Keep the `v0.1.1` tag on the source commit that produced the release
+commit. Keep the `v0.1.2` tag on the source commit that produced the release
 archives. Updating checksums does not require moving the tag, republishing the
 GitHub release, or rebuilding the NIFs.
 
@@ -99,7 +99,7 @@ EX_FASTEMBED_BUILD=1 mix hex.publish --dry-run --yes
 ```
 
 The dry run builds the package and HexDocs without uploading. Inspect
-`ex_fastembed-0.1.1.tar` and `doc/index.html`. Confirm that the package includes
+`ex_fastembed-0.1.2.tar` and `doc/index.html`. Confirm that the package includes
 all eight checksum entries, the guides, changelog, and native source files.
 
 Then publish both the package and docs:

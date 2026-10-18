@@ -83,6 +83,11 @@ if [ "$package_mode" = precompiled ]; then
 else
   export EX_FASTEMBED_BUILD=1
   export CARGO_TARGET_DIR="$project_root/native/ex_fastembed/target"
+  # Hex archives normalize source timestamps. Reusing the target directory can
+  # otherwise load a stale NIF instead of compiling the extracted sources.
+  # Keep dependency artifacts, but force this package itself to rebuild.
+  cargo clean --manifest-path "$smoke_root/package/native/ex_fastembed/Cargo.toml" \
+    --release --package ex_fastembed
 fi
 export RUSTLER_PRECOMPILED_GLOBAL_CACHE_PATH="$smoke_root/nif-cache"
 export FASTEMBED_CACHE_DIR="${FASTEMBED_CACHE_DIR:-$project_root/.fastembed_cache}"

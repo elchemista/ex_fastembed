@@ -20,6 +20,14 @@ cargo clippy --locked --all-targets --all-features --manifest-path native/ex_fas
 function has documentation and a type specification, and that the model guide
 matches the native catalog.
 
+The Mix `rustler` compiler remains at 0.38, the latest Hex release used by this
+project, while the native Rustler crate is 0.39. These versions can differ: the
+Mix package invokes Cargo, which resolves the native crate from `Cargo.lock`.
+`hf-hub` stays on 0.5 to match FastEmbed's cache API. Dependency updates must
+preserve the Rust 1.91 minimum and be tested with that toolchain.
+Native unit tests omit NIF registration because they run outside the BEAM;
+ExUnit and the release smoke tests exercise the registered entry points.
+
 CI runs these checks on pull requests and pushes to `master`. A newer commit
 cancels an older check run for the same pull request or branch. Rust dependencies,
 ONNX Runtime, Mix dependencies, and Dialyzer PLTs are cached. Cache keys separate
@@ -61,6 +69,10 @@ physical deletion of model files, and preserved unrelated models. Native tests
 cover destruction after active work, failed replacement, symlinks, and traversal
 rejection. Tests use temporary directories for deletion and leave the shared
 model download cache intact.
+
+Incomplete-cache tests cover missing files, empty regular snapshot files, and
+dangling snapshot links. Downloads repair these entries at the cached revision;
+non-empty files are reused, and directories occupying file paths return errors.
 
 The stable CI job runs the combined coverage script, enforces the same 90% native
 threshold, and uploads the Elixir and Rust HTML reports. The offline suite still
@@ -117,6 +129,8 @@ bash scripts/package_smoke.sh --source
 
 This extracts the actual Hex archive into a temporary production consumer,
 builds its packaged Rust sources, and runs inference, metadata, and unload checks.
+The smoke test clears the package's release artifacts before compiling, retaining
+dependency artifacts while preventing reuse of a stale locally built NIF.
 It verifies that the lifecycle guide and native sources are packaged and that
 local build artifacts are absent. `task source-check` combines this with all
 static checks and coverage.

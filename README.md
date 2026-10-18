@@ -11,7 +11,7 @@ see [model memory, files, and lifecycle](guides/model_lifecycle.md).
 Add the dependency to `mix.exs`:
 
 ```elixir
-{:ex_fastembed, "~> 0.1.1"}
+{:ex_fastembed, "~> 0.1.2"}
 ```
 
 Requires **Elixir 1.18+**. Precompiled NIFs support Linux x86_64/aarch64

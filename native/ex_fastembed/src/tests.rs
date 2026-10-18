@@ -69,6 +69,21 @@ fn every_reranker_variant_can_be_selected_explicitly() {
 }
 
 #[test]
+fn jina_reranker_corrected_name_and_legacy_typo_resolve_to_the_same_variant() {
+    for name in [
+        "JINARerankerV2BaseMultilingual",
+        "JINARerankerV2BaseMultiligual",
+        "jinaai/jina-reranker-v2-base-multilingual",
+        "jinaai/jina-reranker-v2-base-multiligual",
+    ] {
+        assert_eq!(
+            resolve_reranker_model(&name.to_uppercase()),
+            Ok(RerankerModel::JINARerankerV2BaseMultilingual)
+        );
+    }
+}
+
+#[test]
 fn legacy_aliases_preserve_their_models_case_insensitively() {
     for (name, model) in LEGACY_EMBEDDING_ALIASES {
         assert_eq!(

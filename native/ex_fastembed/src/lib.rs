@@ -1,3 +1,6 @@
+// Unit tests run outside the BEAM; NIF entry points are exercised by ExUnit.
+#![cfg_attr(test, allow(dead_code))]
+
 use fastembed::{
     EmbeddingModel, RerankInitOptions, RerankerModel, TextEmbedding, TextInitOptions, TextRerank,
 };
@@ -60,11 +63,15 @@ const LEGACY_RERANKER_ALIASES: &[(&str, RerankerModel)] = &[
     ("BAAI/bge-reranker-v2-m3", RerankerModel::BGERerankerV2M3),
     (
         "jinaai/jina-reranker-v2-base-multiligual",
-        RerankerModel::JINARerankerV2BaseMultiligual,
+        RerankerModel::JINARerankerV2BaseMultilingual,
+    ),
+    (
+        "JINARerankerV2BaseMultiligual",
+        RerankerModel::JINARerankerV2BaseMultilingual,
     ),
 ];
 
-#[rustler::nif]
+#[cfg_attr(not(test), rustler::nif)]
 fn embed_models() -> Vec<String> {
     supported_embedding_model_names()
 }
@@ -87,7 +94,7 @@ fn supported_embedding_model_names() -> Vec<String> {
     sorted_unique_names(names)
 }
 
-#[rustler::nif]
+#[cfg_attr(not(test), rustler::nif)]
 fn reranker_models() -> Vec<String> {
     supported_reranker_model_names()
 }
@@ -110,17 +117,17 @@ fn supported_reranker_model_names() -> Vec<String> {
     sorted_unique_names(names)
 }
 
-#[rustler::nif(schedule = "DirtyIo")]
+#[cfg_attr(not(test), rustler::nif(schedule = "DirtyIo"))]
 fn unload() -> Result<bool, String> {
     EMBED_MODEL.unload()
 }
 
-#[rustler::nif(schedule = "DirtyIo")]
+#[cfg_attr(not(test), rustler::nif(schedule = "DirtyIo"))]
 fn unload_reranker() -> Result<bool, String> {
     RERANKER.unload()
 }
 
-#[rustler::nif(schedule = "DirtyCpu")]
+#[cfg_attr(not(test), rustler::nif(schedule = "DirtyCpu"))]
 fn load(model_name: String, cache_dir: String) -> Result<i64, String> {
     let model = resolve_embedding_model(&model_name)?;
     let info = TextEmbedding::get_model_info(&model).map_err(|e| e.to_string())?;
@@ -144,7 +151,7 @@ fn load(model_name: String, cache_dir: String) -> Result<i64, String> {
     Ok(dimension)
 }
 
-#[rustler::nif(schedule = "DirtyCpu")]
+#[cfg_attr(not(test), rustler::nif(schedule = "DirtyCpu"))]
 fn embed_text(texts: Vec<String>) -> Result<Vec<Vec<f32>>, String> {
     if texts.is_empty() {
         return Ok(Vec::new());
@@ -154,7 +161,7 @@ fn embed_text(texts: Vec<String>) -> Result<Vec<Vec<f32>>, String> {
     })
 }
 
-#[rustler::nif(schedule = "DirtyCpu")]
+#[cfg_attr(not(test), rustler::nif(schedule = "DirtyCpu"))]
 fn load_reranker(model_name: String, cache_dir: String) -> Result<bool, String> {
     let model = resolve_reranker_model(&model_name)?;
     let info = TextRerank::get_model_info(&model);
@@ -177,7 +184,7 @@ fn load_reranker(model_name: String, cache_dir: String) -> Result<bool, String> 
     Ok(true)
 }
 
-#[rustler::nif(schedule = "DirtyCpu")]
+#[cfg_attr(not(test), rustler::nif(schedule = "DirtyCpu"))]
 fn rerank(
     query: String,
     documents: Vec<String>,
@@ -261,6 +268,7 @@ fn is_quantized_model(model: &EmbeddingModel) -> bool {
         })
 }
 
+#[cfg(not(test))]
 rustler::init!("Elixir.ExFastembed.Native");
 
 #[cfg(test)]

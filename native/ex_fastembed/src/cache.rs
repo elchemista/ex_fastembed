@@ -40,7 +40,7 @@ const TOKENIZER_FILES: [&str; 4] = [
     "tokenizer_config.json",
 ];
 
-#[rustler::nif(schedule = "DirtyIo")]
+#[cfg_attr(not(test), rustler::nif(schedule = "DirtyIo"))]
 fn models(cache_dir: String) -> Vec<ModelStatus> {
     let cache = Cache::new(effective_cache_dir(cache_dir));
     let mut models: Vec<_> = TextEmbedding::list_supported_models()
@@ -56,7 +56,7 @@ fn models(cache_dir: String) -> Vec<ModelStatus> {
     models
 }
 
-#[rustler::nif(schedule = "DirtyIo")]
+#[cfg_attr(not(test), rustler::nif(schedule = "DirtyIo"))]
 fn model_info(name: String, kind: ModelKind, cache_dir: String) -> Result<ModelStatus, String> {
     lookup_model(name, kind, cache_dir)
 }
@@ -192,14 +192,14 @@ fn directory_bytes(path: &Path) -> std::io::Result<u64> {
     std::fs::read_dir(path)?.try_fold(0, |size, entry| Ok(size + directory_bytes(&entry?.path())?))
 }
 
-#[rustler::nif(schedule = "DirtyIo")]
+#[cfg_attr(not(test), rustler::nif(schedule = "DirtyIo"))]
 fn cache_directory(cache_dir: String) -> String {
     effective_cache_dir(cache_dir)
         .to_string_lossy()
         .into_owned()
 }
 
-#[rustler::nif(schedule = "DirtyIo")]
+#[cfg_attr(not(test), rustler::nif(schedule = "DirtyIo"))]
 fn loaded_models() -> Result<Vec<ModelStatus>, String> {
     let mut models = Vec::new();
     for kind in [ModelKind::Embedding, ModelKind::Reranker] {
@@ -214,7 +214,7 @@ fn loaded_models() -> Result<Vec<ModelStatus>, String> {
     Ok(models)
 }
 
-#[rustler::nif(schedule = "DirtyIo")]
+#[cfg_attr(not(test), rustler::nif(schedule = "DirtyIo"))]
 fn delete_model(name: String, kind: ModelKind, cache_dir: String) -> Result<bool, String> {
     // Hold across inspection, unload, and deletion so a concurrent loader cannot
     // recreate the cache or keep a session backed by files being removed.
@@ -278,6 +278,43 @@ fn file_cached(repo: &CacheRepo, file: &str) -> bool {
         .is_some_and(|metadata| metadata.is_file() && metadata.len() > 0)
 }
 
+// hf-hub keeps an existing snapshot entry, even if it is an empty regular file.
+// Unlink unusable entries before downloading; never remove symlink targets or
+// directories that happen to occupy a required file's path.
+fn prepare_download_destination(path: &Path) -> std::io::Result<()> {
+    match path.metadata() {
+        Ok(metadata) if metadata.is_file() && metadata.len() > 0 => return Ok(()),
+        Err(error) if error.kind() != std::io::ErrorKind::NotFound => return Err(error),
+        _ => (),
+    }
+    match path.symlink_metadata() {
+        Ok(metadata) if metadata.is_file() || metadata.is_symlink() => std::fs::remove_file(path),
+        Ok(_) => Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            format!("Model file path is not a regular file: {}", path.display()),
+        )),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(error),
+    }
+}
+
+fn cached_revision(reference: &Path) -> std::io::Result<String> {
+    let contents = std::fs::read_to_string(reference)?;
+    let revision = contents.trim();
+    if revision.is_empty()
+        || matches!(revision, "." | "..")
+        || !revision
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b"_.-".contains(&b))
+    {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "Invalid cached model revision: expected a single snapshot directory name",
+        ));
+    }
+    Ok(revision.to_string())
+}
+
 pub(crate) fn effective_cache_dir(default: String) -> PathBuf {
     // FastEmbed's HF_HOME override is read from the native process environment.
     let path = PathBuf::from(std::env::var("HF_HOME").unwrap_or(default));
@@ -313,7 +350,7 @@ pub(crate) fn prepare_model_files(
 
         // Pin missing files to the cached revision. Fetching each file from main
         // can advance refs/main midway and mix weights and tokenizer revisions.
-        let revision = std::fs::read_to_string(reference)?;
+        let revision = cached_revision(&reference)?;
         let pinned = Repo::with_revision(repository.into(), RepoType::Model, revision.clone());
         let pinned_cache = cache.repo(pinned.clone());
         pinned_cache.create_ref(&revision)?;
@@ -323,6 +360,7 @@ pub(crate) fn prepare_model_files(
             .chain(additional.iter().map(String::as_str))
         {
             if !file_cached(&pinned_cache, file) {
+                prepare_download_destination(&pinned_cache.pointer_path(&revision).join(file))?;
                 pinned_api.download(file)?;
             }
         }

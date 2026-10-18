@@ -15,8 +15,11 @@ defmodule Mix.Tasks.Fastembed.Download do
 
   Complete cached models are skipped. Missing files are downloaded using FastEmbed
   and the model is initialized to verify it can load. Existing non-empty files are
-  reused. This may require substantial memory for large models. A load/download
-  failure exits with a Mix error. The loaded model belongs to this Mix process;
+  reused. Empty snapshot files and dangling snapshot links are replaced when
+  downloading missing files; their link targets are kept. A directory occupying
+  a required file path returns an error. Loading may require substantial memory
+  for large models. A load/download failure exits with a Mix error.
+  The loaded model belongs to this Mix process;
   your application still calls `ExFastembed.load/1` or `ExFastembed.load_reranker/1`
   before inference.
   """

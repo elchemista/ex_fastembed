@@ -43,8 +43,15 @@ defmodule ExFastembedModelsTest do
   end
 
   test "metadata resolves reranker aliases and rejects invalid input" do
-    assert {:ok, %{name: "JINARerankerV2BaseMultiligual", kind: :reranker}} =
-             ExFastembed.model_info("jinaai/jina-reranker-v2-base-multiligual", :reranker)
+    for name <- [
+          "JINARerankerV2BaseMultilingual",
+          "JINARerankerV2BaseMultiligual",
+          "jinaai/jina-reranker-v2-base-multilingual",
+          "jinaai/jina-reranker-v2-base-multiligual"
+        ] do
+      assert {:ok, %{name: "JINARerankerV2BaseMultilingual", kind: :reranker}} =
+               ExFastembed.model_info(String.upcase(name), :reranker)
+    end
 
     for {name, kind} <- [
           {"unknown", :embedding},
@@ -55,6 +62,28 @@ defmodule ExFastembedModelsTest do
         ] do
       assert {:error, reason} = ExFastembed.model_info(name, kind)
       assert is_binary(reason)
+    end
+  end
+
+  test "every advertised name resolves to a catalog entry case-insensitively" do
+    catalog = ExFastembed.models()
+
+    for {kind, names} <- [
+          {:embedding, ExFastembed.embed_models()},
+          {:reranker, ExFastembed.reranker_models()}
+        ],
+        name <- names do
+      assert {:ok, info} = ExFastembed.model_info(String.upcase(name), kind)
+      assert info in catalog
+    end
+  end
+
+  test "documented variants include the dimensions and repositories used at runtime" do
+    guide = File.read!(Path.expand("../guides/models.md", __DIR__))
+
+    for model <- ExFastembed.models() do
+      assert guide =~
+               "| `#{model.name}` | #{model.kind} | #{model.dimension || "—"} | `#{model.repository}` |"
     end
   end
 
@@ -108,6 +137,27 @@ defmodule ExFastembedModelsTest do
 
     assert_raise Mix.Error, ~r/Reranker model not recognized/, fn ->
       Download.run(["invalid", "--reranker"])
+    end
+  end
+
+  test "loads reject malformed cached revisions without changing local files", %{cache: cache} do
+    outside = Path.join(cache, "outside/config.json")
+    File.mkdir_p!(Path.dirname(outside))
+    File.write!(outside, "")
+
+    for {name, kind, loader} <- [
+          {"BGESmallENV15", :embedding, &ExFastembed.load/1},
+          {"JINARerankerV1TurboEn", :reranker, &ExFastembed.load_reranker/1}
+        ] do
+      {:ok, info} = ExFastembed.model_info(name, kind)
+      reference = Path.join(info.path, "refs/main")
+      File.mkdir_p!(Path.dirname(reference))
+      File.write!(reference, "../../outside")
+
+      assert {:error, message} = loader.(name)
+      assert message =~ "Invalid cached model revision"
+      assert File.read!(reference) == "../../outside"
+      assert File.read!(outside) == ""
     end
   end
 

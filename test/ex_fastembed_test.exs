@@ -73,6 +73,8 @@ defmodule ExFastembedTest do
       assert "rozgo/bge-reranker-v2-m3" in models
       assert "jinaai/jina-reranker-v2-base-multiligual" in models
       assert "jinaai/jina-reranker-v2-base-multilingual" in models
+      assert "JINARerankerV2BaseMultilingual" in models
+      assert "JINARerankerV2BaseMultiligual" in models
     end
 
     test "load_reranker/1 with an invalid reranker model returns an error tuple" do

@@ -1,6 +1,21 @@
 defmodule ExFastembedDocumentationTest do
   use ExUnit.Case, async: true
 
+  test "release versions and the generated catalog match the locked dependencies" do
+    root = Path.expand("..", __DIR__)
+    version = Mix.Project.config()[:version]
+    manifest = File.read!(Path.join(root, "native/ex_fastembed/Cargo.toml"))
+    lock = File.read!(Path.join(root, "native/ex_fastembed/Cargo.lock"))
+    readme = File.read!(Path.join(root, "README.md"))
+    guide = File.read!(Path.join(root, "guides/models.md"))
+
+    assert manifest =~ "version = \"#{version}\""
+    assert lock =~ "name = \"ex_fastembed\"\nversion = \"#{version}\""
+    assert readme =~ "{:ex_fastembed, \"~> #{version}\"}"
+    [_, fastembed_version] = Regex.run(~r/name = "fastembed"\nversion = "([^"]+)"/, lock)
+    assert guide =~ "`fastembed-rs` #{fastembed_version} metadata"
+  end
+
   test "every public API function has documentation and a specification" do
     {:docs_v1, _, _, _, module_doc, _, docs} = Code.fetch_docs(ExFastembed)
     {:ok, specs} = Code.Typespec.fetch_specs(ExFastembed)

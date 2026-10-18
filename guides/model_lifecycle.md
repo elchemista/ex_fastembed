@@ -253,22 +253,37 @@ takes a list and returns one vector per input. Both also accept batch options as
 a second argument. They use these retrieval prefixes, including the quantized
 variants of each family:
 
+Every non-empty prefix ends with a space, except the Chinese BGE instruction.
+
 | Family | Query prefix | Document prefix |
 | --- | --- | --- |
 | Multilingual E5 small/base/large | `query: ` | `passage: ` |
 | BGE v1.5 English | `Represent this sentence for searching relevant passages: ` | None |
 | BGE v1.5 Chinese | `为这个句子生成表示以用于检索相关文章：` | None |
 | Nomic v1 and v1.5 | `search_query: ` | `search_document: ` |
-| Other variants, including BGE-M3 | None | None |
+| Snowflake Arctic Embed XS/S/M/M-Long/L | `Represent this sentence for searching relevant passages: ` | None |
+| Mxbai Embed Large v1 | `Represent this sentence for searching relevant passages: ` | None |
+| ModernBERT Embed Large | `search_query: ` | `search_document: ` |
+| EmbeddingGemma 300M (including Q and Q4) | `task: search result \| query: ` | `title: none \| text: ` |
+| Other catalog variants, including BGE-M3 | None | None |
 
 These rules follow the [E5](https://huggingface.co/intfloat/multilingual-e5-small),
 [BGE](https://huggingface.co/BAAI/bge-small-en-v1.5),
-[Nomic v1](https://huggingface.co/nomic-ai/nomic-embed-text-v1) and
-[Nomic v1.5](https://huggingface.co/nomic-ai/nomic-embed-text-v1.5) model cards.
+[Nomic v1](https://huggingface.co/nomic-ai/nomic-embed-text-v1),
+[Nomic v1.5](https://huggingface.co/nomic-ai/nomic-embed-text-v1.5),
+[Snowflake](https://huggingface.co/Snowflake/snowflake-arctic-embed-m),
+[Mxbai](https://huggingface.co/mixedbread-ai/mxbai-embed-large-v1),
+[ModernBERT](https://huggingface.co/lightonai/modernbert-embed-large) and
+[EmbeddingGemma](https://huggingface.co/google/embeddinggemma-300m) model cards.
 Use unprefixed inputs; the helpers always prepend the applicable instruction.
 The prefix and inference use the same locked session, including during replacement.
+The session retains its `EmbeddingModel` variant; prefix selection is exhaustive
+so new upstream variants must be handled explicitly when updating FastEmbed.
 
-For other model families, custom prompts, or tasks such as clustering and
+EmbeddingGemma documents use `none` as the default title. To include an actual
+title, pass `"title: Your title | text: Document content"` to `embed_text/1`.
+
+For custom prompts, document titles, or tasks such as clustering and
 symmetric similarity, use `embed_text/1` or `embed_text/2` with the instructions
 appropriate to that model and task. Those functions always pass text unchanged.
 Use the same model and document preparation when building and querying an index.

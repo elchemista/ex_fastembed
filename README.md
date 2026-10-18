@@ -50,8 +50,9 @@ Reranking returns `{original_index, score, document}` tuples, ordered by descend
 score. Pass `false` as the last argument to return `nil` instead of document text.
 
 For retrieval, `embed_query/1` returns a single query vector and
-`embed_documents/1` returns document vectors, adding the documented prefixes for
-E5, BGE v1.5 and Nomic. `embed_text/1` keeps text unchanged. See the
+`embed_documents/1` returns document vectors, adding the model's retrieval
+prefixes, including for Snowflake, Mxbai, ModernBERT and EmbeddingGemma.
+`embed_text/1` keeps text unchanged. See the
 [retrieval prefix table](guides/model_lifecycle.md#retrieval-prefixes) for supported
 families and custom prompts. `embed_text/2`, `embed_documents/2`, `embed_query/2`
 and `rerank/4` accept `batch_size: 16` (or `nil` for FastEmbed defaults).

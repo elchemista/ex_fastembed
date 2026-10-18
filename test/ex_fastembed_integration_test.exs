@@ -283,6 +283,31 @@ defmodule ExFastembedIntegrationTest do
     end
   end
 
+  test "Snowflake retrieval helpers use the loaded variant and raw embeddings stay unchanged" do
+    assert {:ok, 384} = ExFastembed.load("SnowflakeArcticEmbedXSQ")
+    query = "capital of Italy"
+    documents = ["Rome is the capital of Italy.", "Bears live in forests."]
+
+    assert {:ok, actual_query} = ExFastembed.embed_query(query)
+
+    assert {:ok, explicit_query} =
+             ExFastembed.embed_text([
+               "Represent this sentence for searching relevant passages: " <> query
+             ])
+
+    assert_vectors_close([actual_query], explicit_query)
+    assert {:ok, raw_query} = ExFastembed.embed_text([query])
+    refute raw_query == explicit_query
+    assert {:ok, actual_documents} = ExFastembed.embed_documents(documents)
+    assert {:ok, raw_documents} = ExFastembed.embed_text(documents)
+    assert_vectors_close(actual_documents, raw_documents)
+
+    assert {:ok, 384} = ExFastembed.load("AllMiniLML6V2Q")
+    assert {:ok, replacement_query} = ExFastembed.embed_query(query)
+    assert {:ok, replacement_raw} = ExFastembed.embed_text([query])
+    assert_vectors_close([replacement_query], replacement_raw)
+  end
+
   test "downloading another variant preserves both active sessions" do
     assert {:ok, 384} = ExFastembed.load("BGESmallENV15")
     assert {:ok, true} = ExFastembed.load_reranker("JINARerankerV1TurboEn")

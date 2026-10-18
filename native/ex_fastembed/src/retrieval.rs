@@ -1,5 +1,5 @@
-//! Retrieval prompts from the E5, BGE v1.5 and Nomic model cards.
-//! Other variants and raw embedding calls pass text through unchanged.
+//! Retrieval prompts from the upstream model cards linked in the lifecycle guide.
+use fastembed::EmbeddingModel;
 
 #[derive(Clone, Copy, PartialEq, Eq, rustler::NifUnitEnum)]
 pub(crate) enum Input {
@@ -8,7 +8,7 @@ pub(crate) enum Input {
     Document,
 }
 
-pub(crate) fn prepare(texts: Vec<String>, model: &str, input: Input) -> Vec<String> {
+pub(crate) fn prepare(texts: Vec<String>, model: &EmbeddingModel, input: Input) -> Vec<String> {
     let prefix = prefix(model, input);
     if prefix.is_empty() {
         texts
@@ -20,30 +20,61 @@ pub(crate) fn prepare(texts: Vec<String>, model: &str, input: Input) -> Vec<Stri
     }
 }
 
-fn prefix(model: &str, input: Input) -> &'static str {
-    match (model, input) {
-        (_, Input::Raw) => "",
-        ("MultilingualE5Small" | "MultilingualE5Base" | "MultilingualE5Large", Input::Query) => {
-            "query: "
+fn prefix(model: &EmbeddingModel, input: Input) -> &'static str {
+    use EmbeddingModel::*;
+    // Deliberately exhaustive: dependency upgrades must account for new or
+    // renamed variants, including those that need no retrieval instruction.
+    let (query, document) = match model {
+        MultilingualE5Small | MultilingualE5Base | MultilingualE5Large => ("query: ", "passage: "),
+        NomicEmbedTextV1 | NomicEmbedTextV15 | NomicEmbedTextV15Q | ModernBertEmbedLarge => {
+            ("search_query: ", "search_document: ")
         }
-        ("MultilingualE5Small" | "MultilingualE5Base" | "MultilingualE5Large", Input::Document) => {
-            "passage: "
+        BGESmallENV15
+        | BGESmallENV15Q
+        | BGEBaseENV15
+        | BGEBaseENV15Q
+        | BGELargeENV15
+        | BGELargeENV15Q
+        | SnowflakeArcticEmbedXS
+        | SnowflakeArcticEmbedXSQ
+        | SnowflakeArcticEmbedS
+        | SnowflakeArcticEmbedSQ
+        | SnowflakeArcticEmbedM
+        | SnowflakeArcticEmbedMQ
+        | SnowflakeArcticEmbedMLong
+        | SnowflakeArcticEmbedMLongQ
+        | SnowflakeArcticEmbedL
+        | SnowflakeArcticEmbedLQ
+        | MxbaiEmbedLargeV1
+        | MxbaiEmbedLargeV1Q => (
+            "Represent this sentence for searching relevant passages: ",
+            "",
+        ),
+        BGESmallZHV15 | BGELargeZHV15 => ("为这个句子生成表示以用于检索相关文章：", ""),
+        EmbeddingGemma300M | EmbeddingGemma300MQ | EmbeddingGemma300MQ4 => {
+            ("task: search result | query: ", "title: none | text: ")
         }
-        ("NomicEmbedTextV1" | "NomicEmbedTextV15" | "NomicEmbedTextV15Q", Input::Query) => {
-            "search_query: "
-        }
-        ("NomicEmbedTextV1" | "NomicEmbedTextV15" | "NomicEmbedTextV15Q", Input::Document) => {
-            "search_document: "
-        }
-        (
-            "BGESmallENV15" | "BGESmallENV15Q" | "BGEBaseENV15" | "BGEBaseENV15Q" | "BGELargeENV15"
-            | "BGELargeENV15Q",
-            Input::Query,
-        ) => "Represent this sentence for searching relevant passages: ",
-        ("BGESmallZHV15" | "BGELargeZHV15", Input::Query) => {
-            "为这个句子生成表示以用于检索相关文章："
-        }
-        _ => "",
+        AllMiniLML6V2
+        | AllMiniLML6V2Q
+        | AllMiniLML12V2
+        | AllMiniLML12V2Q
+        | AllMpnetBaseV2
+        | ParaphraseMLMiniLML12V2
+        | ParaphraseMLMiniLML12V2Q
+        | ParaphraseMLMpnetBaseV2
+        | BGEM3
+        | GTEBaseENV15
+        | GTEBaseENV15Q
+        | GTELargeENV15
+        | GTELargeENV15Q
+        | ClipVitB32
+        | JinaEmbeddingsV2BaseCode
+        | JinaEmbeddingsV2BaseEN => ("", ""),
+    };
+    match input {
+        Input::Raw => "",
+        Input::Query => query,
+        Input::Document => document,
     }
 }
 

@@ -11,7 +11,12 @@ mod cache;
 mod retrieval;
 mod runtime;
 
-static EMBED_MODEL: Slot<TextEmbedding> = Slot::new();
+struct EmbeddingSession {
+    model: TextEmbedding,
+    variant: EmbeddingModel,
+}
+
+static EMBED_MODEL: Slot<EmbeddingSession> = Slot::new();
 static RERANKER: Slot<TextRerank> = Slot::new();
 // Loads share this lock; repository deletion is exclusive across both families.
 static CACHE_ACCESS: RwLock<()> = RwLock::new(());
@@ -156,6 +161,10 @@ fn load(model_name: String, cache_dir: String) -> Result<i64, String> {
             &info.additional_files,
         )?;
         TextEmbedding::try_new(TextInitOptions::new(model.clone()).with_cache_dir(cache_dir))
+            .map(|session| EmbeddingSession {
+                model: session,
+                variant: model.clone(),
+            })
             .map_err(|e| e.to_string())
     })?;
     Ok(dimension)
@@ -171,9 +180,12 @@ fn embed_text(
     if texts.is_empty() {
         return Ok(Vec::new());
     }
-    EMBED_MODEL.with_model_identity("No model loaded. Call load/1 first.", |model, identity| {
-        let texts = retrieval::prepare(texts, &identity.name, input);
-        model.embed(texts, batch_size).map_err(|e| e.to_string())
+    EMBED_MODEL.with_model("No model loaded. Call load/1 first.", |session| {
+        let texts = retrieval::prepare(texts, &session.variant, input);
+        session
+            .model
+            .embed(texts, batch_size)
+            .map_err(|e| e.to_string())
     })
 }
 

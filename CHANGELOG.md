@@ -2,7 +2,9 @@
 
 ## 0.1.2
 
-- Add upstream descriptions to model metadata, `download/2` without session initialization, batch-size options for embeddings and reranking, and E5/BGE/Nomic retrieval helpers.
+- Complete retrieval prefixes for Snowflake Arctic Embed, Mxbai, ModernBERT and EmbeddingGemma, including quantized variants; select them exhaustively from the session's typed model variant and verify the entire catalog in tests.
+
+- Add upstream descriptions to model metadata, `download/2` without session initialization, batch-size options for embeddings and reranking, and model-specific retrieval helpers.
 - Make the download task populate files without loading a model; keep existing embedding and reranker sessions intact.
 - Recover malformed cache references from remote main, handle trailing newlines consistently, snapshot loaded identities once per catalog listing, and limit cache-deletion advice to HTTP 404 errors.
 - Let documentation-only publishing and reverts proceed without checksum validation; keep release scripts out of the Hex package.

@@ -316,8 +316,9 @@ defmodule ExFastembed do
   @doc """
   Embeds one retrieval query, returning a single vector.
 
-  Adds the retrieval query prefix for multilingual E5, BGE v1.5 (including
-  quantized variants), and Nomic v1/v1.5. Other variants pass text through
+  Adds the retrieval query prefix for multilingual E5, BGE v1.5, Nomic,
+  Snowflake Arctic Embed, Mxbai Embed Large v1, ModernBERT and EmbeddingGemma,
+  including their quantized variants. Other catalog variants pass text through
   unchanged, including BGE-M3. Pass unprefixed text: prefixes are always added.
   Use `embed_text/1` for manual instructions or tasks other than retrieval.
   The prefix is chosen under the same lock as inference, from the active session.
@@ -343,8 +344,10 @@ defmodule ExFastembed do
   @doc """
   Embeds retrieval documents, returning one vector per text in input order.
 
-  Adds `passage: ` for multilingual E5 and `search_document: ` for Nomic v1/v1.5.
-  BGE and all other variants pass text through unchanged. Pass unprefixed texts.
+  Adds `passage: ` for multilingual E5, `search_document: ` for Nomic and
+  ModernBERT, and `title: none | text: ` for EmbeddingGemma. Other variants pass
+  text through unchanged. Pass unprefixed texts. For an EmbeddingGemma document
+  with a title, supply the complete formatted prompt through `embed_text/1`.
   Use the same model for `embed_query/1` and the documents it will search.
   An empty list returns `{:ok, []}` without requiring a loaded session.
   """

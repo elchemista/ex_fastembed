@@ -50,6 +50,7 @@ defmodule ExFastembed do
           name: String.t(),
           kind: model_kind(),
           repository: String.t(),
+          description: String.t(),
           dimension: pos_integer() | nil,
           cached: boolean(),
           loaded: boolean(),
@@ -153,7 +154,7 @@ defmodule ExFastembed do
     do: {:error, "Invalid input: expected a model name and :embedding or :reranker"}
 
   @doc """
-  Lists distinct model variants with their repository, dimension, and cache status.
+  Lists distinct model variants with their description, repository, dimension, and cache status.
 
   Checks the cache locally without network access or loading a model. `cached`
   means that the selected ONNX weights, additional data, and four tokenizer/config
@@ -294,15 +295,67 @@ defmodule ExFastembed do
   """
   @doc group: :embeddings
   @spec embed_text([String.t()]) :: {:ok, [embedding()]} | error()
-  def embed_text([]), do: {:ok, []}
+  def embed_text(texts), do: embed_text(texts, [])
 
-  def embed_text(texts) when is_list(texts) do
-    with :ok <- validate_string_list(texts, "texts must be a list of strings") do
-      Native.embed_text(texts)
+  @doc """
+  Embeds texts with an optional `:batch_size` (positive integer or `nil`).
+
+  `nil` uses FastEmbed's default. Smaller batches can reduce peak inference memory;
+  all returned vectors still reside in memory. Dynamic quantized models reject a
+  batch size smaller than the number of texts because their vectors would not be
+  comparable across batches. Batch-size errors preserve the loaded session.
+
+  Text is passed unchanged, with no retrieval prefixes. See `embed_text/1` for
+  input and output semantics. Unknown options and invalid batch sizes return an
+  error even for an empty input.
+  """
+  @doc group: :embeddings
+  @spec embed_text([String.t()], keyword()) :: {:ok, [embedding()]} | error()
+  def embed_text(texts, opts), do: embed(texts, opts, :raw)
+
+  @doc """
+  Embeds one retrieval query, returning a single vector.
+
+  Adds the retrieval query prefix for multilingual E5, BGE v1.5 (including
+  quantized variants), and Nomic v1/v1.5. Other variants pass text through
+  unchanged, including BGE-M3. Pass unprefixed text: prefixes are always added.
+  Use `embed_text/1` for manual instructions or tasks other than retrieval.
+  The prefix is chosen under the same lock as inference, from the active session.
+  See the [retrieval prefix table](model_lifecycle.html#retrieval-prefixes).
+  """
+  @doc group: :embeddings
+  @spec embed_query(String.t()) :: {:ok, embedding()} | error()
+  def embed_query(query), do: embed_query(query, [])
+
+  @doc "Embeds one retrieval query with the `:batch_size` option from `embed_text/2`."
+  @doc group: :embeddings
+  @spec embed_query(String.t(), keyword()) :: {:ok, embedding()} | error()
+  def embed_query(query, opts) when is_binary(query) do
+    with :ok <- validate_string(query, "query must be a valid UTF-8 string"),
+         {:ok, [embedding]} <- embed([query], opts, :query) do
+      {:ok, embedding}
     end
   end
 
-  def embed_text(_texts), do: {:error, "Invalid input: texts must be a list of strings"}
+  def embed_query(_query, _opts),
+    do: {:error, "Invalid input: query must be a valid UTF-8 string"}
+
+  @doc """
+  Embeds retrieval documents, returning one vector per text in input order.
+
+  Adds `passage: ` for multilingual E5 and `search_document: ` for Nomic v1/v1.5.
+  BGE and all other variants pass text through unchanged. Pass unprefixed texts.
+  Use the same model for `embed_query/1` and the documents it will search.
+  An empty list returns `{:ok, []}` without requiring a loaded session.
+  """
+  @doc group: :embeddings
+  @spec embed_documents([String.t()]) :: {:ok, [embedding()]} | error()
+  def embed_documents(documents), do: embed_documents(documents, [])
+
+  @doc "Embeds retrieval documents with the `:batch_size` option from `embed_text/2`."
+  @doc group: :embeddings
+  @spec embed_documents([String.t()], keyword()) :: {:ok, [embedding()]} | error()
+  def embed_documents(documents, opts), do: embed(documents, opts, :document)
 
   @doc """
   Loads a reranker model.
@@ -350,16 +403,66 @@ defmodule ExFastembed do
   """
   @doc group: :reranking
   @spec rerank(String.t(), [String.t()], boolean()) :: {:ok, [rerank_result()]} | error()
-  def rerank(query, documents, return_docs)
+  def rerank(query, documents, return_docs), do: rerank(query, documents, return_docs, [])
+
+  @doc "Reranks documents with an optional positive `:batch_size`; `nil` uses FastEmbed's default. See `rerank/3`."
+  @doc group: :reranking
+  @spec rerank(String.t(), [String.t()], boolean(), keyword()) ::
+          {:ok, [rerank_result()]} | error()
+  def rerank(query, documents, return_docs, opts)
       when is_binary(query) and is_list(documents) and is_boolean(return_docs) do
     with :ok <- validate_string(query, "query must be a valid UTF-8 string"),
-         :ok <- validate_string_list(documents, "documents must be a list of strings") do
-      Native.rerank(query, documents, return_docs)
+         :ok <- validate_string_list(documents, "documents must be a list of strings"),
+         {:ok, batch_size} <- batch_size(opts) do
+      Native.rerank(query, documents, return_docs, batch_size)
     end
   end
 
-  def rerank(_query, _documents, _return_docs),
+  def rerank(_query, _documents, _return_docs, _opts),
     do: {:error, "Invalid input: expected a string, a list of strings, and a boolean"}
+
+  @doc """
+  Downloads an embedding or reranker model's required files without initializing it.
+
+  Accepts the names and kinds from `model_info/2`, using the current cache root.
+  Returns `{:ok, true}` when all files are present and non-empty, including an
+  already cached model. Reuses existing files and repairs incomplete snapshots.
+  File contents are not validated as an ONNX model until `load/1` or
+  `load_reranker/1` is called. Neither loaded session is replaced or unloaded.
+  Serializes with loads and cache deletion in this VM; existing inference can continue.
+
+  Useful for warming a cache in a Docker build or before starting inference.
+  """
+  @doc group: :lifecycle
+  @spec download(String.t(), model_kind()) :: {:ok, true} | error()
+  def download(name, kind) when is_binary(name) and kind in [:embedding, :reranker] do
+    with :ok <- validate_string(name, "model name must be a valid UTF-8 string") do
+      Native.download(name, kind, cache_dir())
+    end
+  end
+
+  def download(_name, _kind),
+    do: {:error, "Invalid input: expected a model name and :embedding or :reranker"}
+
+  @spec embed(term(), term(), :raw | :query | :document) :: {:ok, [embedding()]} | error()
+  defp embed(texts, opts, input) do
+    with :ok <- validate_string_list(texts, "texts must be a list of strings"),
+         {:ok, batch_size} <- batch_size(opts) do
+      if texts == [], do: {:ok, []}, else: Native.embed_text(texts, batch_size, input)
+    end
+  end
+
+  @spec batch_size(term()) :: {:ok, pos_integer() | nil} | error()
+  defp batch_size([]), do: {:ok, nil}
+  defp batch_size(batch_size: nil), do: {:ok, nil}
+
+  defp batch_size(batch_size: size)
+       when is_integer(size) and size > 0 and size <= 18_446_744_073_709_551_615,
+       do: {:ok, size}
+
+  defp batch_size(_opts),
+    do:
+      {:error, "Invalid options: expected only :batch_size with a positive 64-bit integer or nil"}
 
   @spec cache_dir() :: String.t()
   defp cache_dir, do: System.get_env("FASTEMBED_CACHE_DIR", ".fastembed_cache")

@@ -126,3 +126,15 @@ fn quantized_model_detection_includes_numbered_variants() {
     assert!(is_quantized_model(&EmbeddingModel::EmbeddingGemma300MQ4));
     assert!(!is_quantized_model(&EmbeddingModel::EmbeddingGemma300M));
 }
+
+#[test]
+fn batch_sizes_are_checked_before_empty_input_or_session_lookup() {
+    assert!(validate_batch_size(None).is_ok());
+    assert!(validate_batch_size(Some(1)).is_ok());
+    assert!(embed_text(vec![], Some(0), retrieval::Input::Raw).is_err());
+    assert!(rerank("query".into(), vec![], false, Some(0)).is_err());
+    assert_eq!(
+        embed_text(vec![], Some(1), retrieval::Input::Raw),
+        Ok(vec![])
+    );
+}

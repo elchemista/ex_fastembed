@@ -61,8 +61,10 @@ defmodule ExFastembed.Native do
   def load(_model_name, _cache_dir), do: :erlang.nif_error("NIF load/2 not loaded")
 
   @doc false
-  @spec embed_text([String.t()]) :: {:ok, [[float()]]} | {:error, String.t()}
-  def embed_text(_texts), do: :erlang.nif_error("NIF embed_text/1 not loaded")
+  @spec embed_text([String.t()], pos_integer() | nil, :raw | :query | :document) ::
+          {:ok, [[float()]]} | ExFastembed.error()
+  def embed_text(_texts, _batch_size, _input),
+    do: :erlang.nif_error("NIF embed_text/3 not loaded")
 
   @doc false
   @spec load_reranker(String.t(), String.t()) :: {:ok, true} | {:error, String.t()}
@@ -70,7 +72,13 @@ defmodule ExFastembed.Native do
     do: :erlang.nif_error("NIF load_reranker/2 not loaded")
 
   @doc false
-  @spec rerank(String.t(), [String.t()], boolean()) ::
+  @spec rerank(String.t(), [String.t()], boolean(), pos_integer() | nil) ::
           {:ok, [{non_neg_integer(), float(), String.t() | nil}]} | {:error, String.t()}
-  def rerank(_query, _documents, _return_docs), do: :erlang.nif_error("NIF rerank/3 not loaded")
+  def rerank(_query, _documents, _return_docs, _batch_size),
+    do: :erlang.nif_error("NIF rerank/4 not loaded")
+
+  @doc false
+  @spec download(String.t(), ExFastembed.model_kind(), String.t()) ::
+          {:ok, true} | ExFastembed.error()
+  def download(_name, _kind, _cache_dir), do: :erlang.nif_error("NIF download/3 not loaded")
 end

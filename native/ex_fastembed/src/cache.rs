@@ -1,6 +1,9 @@
 use crate::runtime::Identity;
 use fastembed::{ModelInfo, RerankerModelInfo, TextEmbedding, TextRerank};
-use hf_hub::{api::sync::ApiBuilder, Cache, CacheRepo, Repo, RepoType};
+use hf_hub::{
+    api::sync::{ApiBuilder, ApiError},
+    Cache, Repo, RepoType,
+};
 use std::path::{Path, PathBuf};
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, rustler::NifUnitEnum)]
@@ -14,6 +17,7 @@ pub(crate) struct ModelStatus {
     pub name: String,
     pub kind: ModelKind,
     pub repository: String,
+    pub description: String,
     pub dimension: Option<usize>,
     pub cached: bool,
     pub loaded: bool,
@@ -40,16 +44,70 @@ const TOKENIZER_FILES: [&str; 4] = [
     "tokenizer_config.json",
 ];
 
+struct CatalogEntry {
+    name: String,
+    kind: ModelKind,
+    repository: String,
+    description: String,
+    dimension: Option<usize>,
+    model_file: String,
+    additional: Vec<String>,
+}
+
+impl CatalogEntry {
+    fn embedding(info: &ModelInfo<fastembed::EmbeddingModel>) -> Self {
+        Self {
+            name: info.model.to_string(),
+            kind: ModelKind::Embedding,
+            repository: info.model_code.clone(),
+            description: info.description.clone(),
+            dimension: Some(info.dim),
+            model_file: info.model_file.clone(),
+            additional: info.additional_files.clone(),
+        }
+    }
+
+    fn reranker(info: RerankerModelInfo) -> Self {
+        Self {
+            name: format!("{:?}", info.model),
+            kind: ModelKind::Reranker,
+            repository: info.model_code,
+            description: info.description,
+            dimension: None,
+            model_file: info.model_file,
+            additional: info.additional_files,
+        }
+    }
+}
+
+fn lookup_entry(name: &str, kind: ModelKind) -> Result<CatalogEntry, String> {
+    match kind {
+        ModelKind::Embedding => {
+            let model = super::resolve_embedding_model(name)?;
+            TextEmbedding::get_model_info(&model)
+                .map(CatalogEntry::embedding)
+                .map_err(|error| error.to_string())
+        }
+        ModelKind::Reranker => {
+            let model = super::resolve_reranker_model(name)?;
+            Ok(CatalogEntry::reranker(TextRerank::get_model_info(&model)))
+        }
+    }
+}
+
 #[cfg_attr(not(test), rustler::nif(schedule = "DirtyIo"))]
 fn models(cache_dir: String) -> Vec<ModelStatus> {
     let cache = Cache::new(effective_cache_dir(cache_dir));
+    // Snapshot each family once; walking the catalog never reacquires slot locks.
+    let embedding = loaded_identity(ModelKind::Embedding);
+    let reranker = loaded_identity(ModelKind::Reranker);
     let mut models: Vec<_> = TextEmbedding::list_supported_models()
-        .into_iter()
-        .map(|info| embedding_status(&info, &cache))
+        .iter()
+        .map(|info| status(CatalogEntry::embedding(info), &cache, embedding.as_ref()))
         .chain(
             TextRerank::list_supported_models()
                 .into_iter()
-                .map(|info| reranker_status(info, &cache)),
+                .map(|info| status(CatalogEntry::reranker(info), &cache, reranker.as_ref())),
         )
         .collect();
     models.sort_by(|left, right| (left.kind, &left.name).cmp(&(right.kind, &right.name)));
@@ -58,47 +116,25 @@ fn models(cache_dir: String) -> Vec<ModelStatus> {
 
 #[cfg_attr(not(test), rustler::nif(schedule = "DirtyIo"))]
 fn model_info(name: String, kind: ModelKind, cache_dir: String) -> Result<ModelStatus, String> {
-    lookup_model(name, kind, cache_dir)
-}
-
-fn lookup_model(name: String, kind: ModelKind, cache_dir: String) -> Result<ModelStatus, String> {
+    let entry = lookup_entry(&name, kind)?;
     let cache = Cache::new(effective_cache_dir(cache_dir));
-    match kind {
-        ModelKind::Embedding => {
-            let model = super::resolve_embedding_model(&name)?;
-            TextEmbedding::get_model_info(&model)
-                .map(|info| embedding_status(info, &cache))
-                .map_err(|error| error.to_string())
-        }
-        ModelKind::Reranker => {
-            let model = super::resolve_reranker_model(&name)?;
-            Ok(reranker_status(TextRerank::get_model_info(&model), &cache))
-        }
-    }
+    Ok(status(entry, &cache, loaded_identity(kind).as_ref()))
 }
 
-fn embedding_status(info: &ModelInfo<fastembed::EmbeddingModel>, cache: &Cache) -> ModelStatus {
-    status(
-        info.model.to_string(),
-        ModelKind::Embedding,
-        &info.model_code,
-        Some(info.dim),
-        &info.model_file,
-        &info.additional_files,
-        cache,
-    )
-}
-
-fn reranker_status(info: RerankerModelInfo, cache: &Cache) -> ModelStatus {
-    status(
-        format!("{:?}", info.model),
-        ModelKind::Reranker,
-        &info.model_code,
-        None,
-        &info.model_file,
-        &info.additional_files,
-        cache,
-    )
+#[cfg_attr(not(test), rustler::nif(schedule = "DirtyIo"))]
+fn download(name: String, kind: ModelKind, cache_dir: String) -> Result<bool, String> {
+    let entry = lookup_entry(&name, kind)?;
+    // Serialize cache preparation with loads and deletion: two first downloads
+    // must not choose different refs/main revisions before initialization reads it.
+    // Existing inference sessions are not locked or changed.
+    let _guard = super::cache_write();
+    prepare_model_files(
+        cache_dir,
+        &entry.repository,
+        &entry.model_file,
+        &entry.additional,
+    )?;
+    Ok(true)
 }
 
 fn required_files(model_file: &str, additional: &[String]) -> Vec<String> {
@@ -119,46 +155,39 @@ fn loaded_identity(kind: ModelKind) -> Option<Identity> {
     }
 }
 
-fn status(
-    name: String,
-    kind: ModelKind,
-    repository: &str,
-    dimension: Option<usize>,
-    model_file: &str,
-    additional: &[String],
-    cache: &Cache,
-) -> ModelStatus {
-    let files = required_files(model_file, additional);
-    let repo = cache.model(repository.into());
+fn status(entry: CatalogEntry, cache: &Cache, identity: Option<&Identity>) -> ModelStatus {
+    let files = required_files(&entry.model_file, &entry.additional);
+    let repo = cache.model(entry.repository.clone());
     let path = cache
         .path()
-        .join(Repo::model(repository.into()).folder_name());
+        .join(Repo::model(entry.repository.clone()).folder_name());
     let revision = cached_revision(&path.join("refs/main")).ok();
     let file_details: Vec<_> = files
         .iter()
         .map(|name| {
-            let path = revision.as_ref().and_then(|_| repo.get(name));
-            let size_bytes = path
+            // Use the validated, trimmed revision instead of CacheRepo::get, which
+            // rereads refs/main verbatim and mishandles trailing whitespace.
+            let path = revision
                 .as_ref()
-                .and_then(|p| p.metadata().ok())
-                .filter(|m| m.is_file() && m.len() > 0)
-                .map(|m| m.len());
+                .map(|revision| repo.pointer_path(revision).join(name))
+                .filter(|path| path.exists());
+            let size_bytes = path.as_ref().and_then(|path| file_size(path));
             FileStatus {
                 name: name.clone(),
-                path: path.map(|p| p.to_string_lossy().into_owned()),
+                path: path.map(|path| path.to_string_lossy().into_owned()),
                 size_bytes,
             }
         })
         .collect();
-    let variant_bytes = file_details.iter().map(|f| f.size_bytes).sum();
-    let loaded =
-        loaded_identity(kind).is_some_and(|id| id.name == name && id.cache_dir == *cache.path());
+    let variant_bytes = file_details.iter().map(|file| file.size_bytes).sum();
+    let loaded = identity.is_some_and(|id| id.name == entry.name && id.cache_dir == *cache.path());
     ModelStatus {
-        name,
-        kind,
-        repository: repository.into(),
-        dimension,
-        cached: file_details.iter().all(|f| f.size_bytes.is_some()),
+        name: entry.name,
+        kind: entry.kind,
+        repository: entry.repository,
+        description: entry.description,
+        dimension: entry.dimension,
+        cached: file_details.iter().all(|file| file.size_bytes.is_some()),
         loaded,
         cache_dir: cache.path().to_string_lossy().into_owned(),
         path: path.to_string_lossy().into_owned(),
@@ -201,11 +230,9 @@ fn loaded_models() -> Result<Vec<ModelStatus>, String> {
     let mut models = Vec::new();
     for kind in [ModelKind::Embedding, ModelKind::Reranker] {
         if let Some(identity) = loaded_identity(kind) {
-            models.push(lookup_model(
-                identity.name,
-                kind,
-                identity.cache_dir.to_string_lossy().into_owned(),
-            )?);
+            let entry = lookup_entry(&identity.name, kind)?;
+            let cache = Cache::new(identity.cache_dir.clone());
+            models.push(status(entry, &cache, Some(&identity)));
         }
     }
     Ok(models)
@@ -216,8 +243,8 @@ fn delete_model(name: String, kind: ModelKind, cache_dir: String) -> Result<bool
     // Hold across inspection, unload, and deletion so a concurrent loader cannot
     // recreate the cache or keep a session backed by files being removed.
     let _guard = super::cache_write();
-    let info = lookup_model(name, kind, cache_dir)?;
-    let directory = PathBuf::from(&info.cache_dir);
+    let info = lookup_entry(&name, kind)?;
+    let directory = effective_cache_dir(cache_dir);
     let path = repository_path(&directory, &info.repository)?;
     match path.symlink_metadata() {
         Ok(metadata) if metadata.is_dir() && !metadata.is_symlink() => (),
@@ -266,20 +293,21 @@ fn files_cached(cache: &Cache, repository: &str, model_file: &str, additional: &
         .path()
         .join(Repo::model(repository.into()).folder_name())
         .join("refs/main");
-    if cached_revision(&reference).is_err() {
+    let Ok(revision) = cached_revision(&reference) else {
         return false;
-    }
-    let repo = cache.model(repository.to_string());
+    };
+    let snapshot = cache.model(repository.into()).pointer_path(&revision);
     std::iter::once(model_file)
         .chain(TOKENIZER_FILES)
         .chain(additional.iter().map(String::as_str))
-        .all(|file| file_cached(&repo, file))
+        .all(|file| file_size(&snapshot.join(file)).is_some())
 }
 
-fn file_cached(repo: &CacheRepo, file: &str) -> bool {
-    repo.get(file)
-        .and_then(|path| path.metadata().ok())
-        .is_some_and(|metadata| metadata.is_file() && metadata.len() > 0)
+fn file_size(path: &Path) -> Option<u64> {
+    path.metadata()
+        .ok()
+        .filter(|metadata| metadata.is_file() && metadata.len() > 0)
+        .map(|metadata| metadata.len())
 }
 
 // hf-hub keeps an existing snapshot entry, even if it is an empty regular file.
@@ -336,55 +364,103 @@ pub(crate) fn prepare_model_files(
     model_file: &str,
     additional: &[String],
 ) -> Result<PathBuf, String> {
-    let directory = effective_cache_dir(directory);
+    prepare_files(
+        effective_cache_dir(directory),
+        repository,
+        model_file,
+        additional,
+        std::env::var("HF_ENDPOINT").unwrap_or_else(|_| "https://huggingface.co".into()),
+    )
+}
+
+fn prepare_files(
+    directory: PathBuf,
+    repository: &str,
+    model_file: &str,
+    additional: &[String],
+    endpoint: String,
+) -> Result<PathBuf, String> {
     let cache = Cache::new(directory.clone());
+    let main = cache.model(repository.into());
+    let reference = directory
+        .join(Repo::model(repository.into()).folder_name())
+        .join("refs/main");
     if files_cached(&cache, repository, model_file, additional) {
+        // FastEmbed still uses CacheRepo::get: normalize whitespace before it
+        // reads the ref, but leave already canonical/read-only caches untouched.
+        let revision = cached_revision(&reference).map_err(|error| error.to_string())?;
+        if std::fs::read_to_string(&reference).map_err(|error| error.to_string())? != revision {
+            main.create_ref(&revision)
+                .map_err(|error| error.to_string())?;
+        }
         return Ok(directory);
     }
 
     let download = || -> Result<(), Box<dyn std::error::Error>> {
         let api = ApiBuilder::new()
             .with_cache_dir(directory.clone())
-            .with_endpoint(
-                std::env::var("HF_ENDPOINT").unwrap_or_else(|_| "https://huggingface.co".into()),
-            )
+            .with_endpoint(endpoint)
             .with_progress(true)
             .build()?;
-        let main = Repo::model(repository.into());
-        let reference = directory.join(main.folder_name()).join("refs/main");
-        // Pin missing files to the cached revision. Fetching each file from main
-        // can advance refs/main midway and mix weights and tokenizer revisions.
-        let revision = if reference.is_file() {
-            cached_revision(&reference)?
-        } else {
-            // Resolve main before downloading so an orphaned snapshot can be
-            // repaired even when refs/main has been removed.
+        // Invalid or missing refs are resolved from main; permission and other
+        // I/O failures must not silently select a different revision.
+        let revision = resolve_revision(&reference, || {
             let metadata = api.metadata(&api.model(repository.into()).url(model_file))?;
-            validate_revision(metadata.commit_hash())?
-        };
+            Ok(validate_revision(metadata.commit_hash())?)
+        })?;
         let pinned = Repo::with_revision(repository.into(), RepoType::Model, revision.clone());
-        let pinned_cache = cache.repo(pinned.clone());
-        pinned_cache.create_ref(&revision)?;
-        // Persist the selected revision before I/O so interrupted first
-        // downloads also resume at the same commit instead of a newer main.
-        cache.repo(main).create_ref(&revision)?;
+        let snapshot = main.pointer_path(&revision);
+        // Persist before downloads so retries keep the selected commit.
+        main.create_ref(&revision)?;
         let pinned_api = api.repo(pinned);
         for file in std::iter::once(model_file)
             .chain(TOKENIZER_FILES)
             .chain(additional.iter().map(String::as_str))
         {
-            if !file_cached(&pinned_cache, file) {
-                prepare_download_destination(&pinned_cache.pointer_path(&revision).join(file))?;
+            let path = snapshot.join(file);
+            if file_size(&path).is_none() {
+                prepare_download_destination(&path)?;
                 pinned_api.download(file)?;
             }
         }
-        cache.model(repository.into()).create_ref(&revision)?;
         Ok(())
     };
-    download().map_err(|error| format!(
-        "{error}. If the cached revision is invalid or unavailable, remove the repository with ExFastembed.delete_model/2 and retry (all cached variants are deleted)."
-    ))?;
+    download().map_err(|error| download_error(error.as_ref()))?;
     Ok(directory)
+}
+
+fn resolve_revision(
+    reference: &Path,
+    remote: impl FnOnce() -> Result<String, Box<dyn std::error::Error>>,
+) -> Result<String, Box<dyn std::error::Error>> {
+    match cached_revision(reference) {
+        Ok(revision) => Ok(revision),
+        Err(error)
+            if matches!(
+                error.kind(),
+                std::io::ErrorKind::NotFound | std::io::ErrorKind::InvalidData
+            ) =>
+        {
+            remote()
+        }
+        Err(error) => Err(error.into()),
+    }
+}
+
+fn download_error(error: &(dyn std::error::Error + 'static)) -> String {
+    if error.downcast_ref::<ApiError>().is_some_and(is_not_found) {
+        format!("{error}. The requested file or revision was not found (404). If the saved revision is no longer available, use ExFastembed.delete_model/2 and retry (all cached variants in that repository are deleted).")
+    } else {
+        error.to_string()
+    }
+}
+
+fn is_not_found(error: &ApiError) -> bool {
+    match error {
+        ApiError::RequestError(error) => matches!(error.as_ref(), ureq::Error::StatusCode(404)),
+        ApiError::TooManyRetries(error) => is_not_found(error),
+        _ => false,
+    }
 }
 
 #[cfg(test)]

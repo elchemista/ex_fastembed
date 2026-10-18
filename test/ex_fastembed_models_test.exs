@@ -27,6 +27,7 @@ defmodule ExFastembedModelsTest do
   test "catalog lists distinct variants with dimensions and local cache status", %{cache: cache} do
     models = ExFastembed.models()
     assert length(models) == 50
+    assert Enum.all?(models, &(is_binary(&1.description) and &1.description != ""))
     assert length(Enum.uniq_by(models, &{&1.kind, &1.name})) == 50
     assert models == Enum.sort_by(models, &{&1.kind, &1.name})
     refute Enum.any?(models, & &1.cached)
@@ -140,31 +141,61 @@ defmodule ExFastembedModelsTest do
     end
   end
 
-  test "loads reject malformed cached revisions without changing local files", %{cache: cache} do
-    outside = Path.join(cache, "outside/config.json")
-    File.mkdir_p!(Path.dirname(outside))
-    File.write!(outside, "")
-
-    for {name, kind, loader} <- [
-          {"BGESmallENV15", :embedding, &ExFastembed.load/1},
-          {"JINARerankerV1TurboEn", :reranker, &ExFastembed.load_reranker/1}
+  test "download reuses complete files without initializing either model family", %{cache: cache} do
+    for {name, kind, repository} <- [
+          {"BGESmallENV15", :embedding, "Xenova/bge-small-en-v1.5"},
+          {"JINARerankerV1TurboEn", :reranker, "jinaai/jina-reranker-v1-turbo-en"}
         ] do
-      {:ok, info} = ExFastembed.model_info(name, kind)
-      reference = Path.join(info.path, "refs/main")
-      File.mkdir_p!(Path.dirname(reference))
-      File.write!(reference, "../../outside")
-
-      assert {:error, message} = loader.(name)
-      assert message =~ "Invalid cached model revision"
-      assert message =~ "ExFastembed.delete_model/2"
-
-      assert {:ok, %{revision: nil, cached: false, file_details: files}} =
-               ExFastembed.model_info(name, kind)
-
-      assert Enum.all?(files, &is_nil(&1.path))
-      assert File.read!(reference) == "../../outside"
-      assert File.read!(outside) == ""
+      # These non-empty fixtures are deliberately not valid ONNX sessions.
+      cache_fixture(cache, repository, "onnx/model.onnx")
+      assert {:ok, true} = ExFastembed.download(name, kind)
+      assert {:ok, %{cached: true, loaded: false}} = ExFastembed.model_info(name, kind)
     end
+
+    assert {:ok, []} = ExFastembed.loaded_models()
+  end
+
+  test "download rejects invalid input and reports file errors without deletion advice", %{
+    cache: cache
+  } do
+    for {name, kind} <- [
+          {"unknown", :embedding},
+          {"unknown", :reranker},
+          {<<255>>, :embedding},
+          {nil, :embedding},
+          {"model", :image}
+        ] do
+      assert {:error, _} = ExFastembed.download(name, kind)
+    end
+
+    snapshot = cache_fixture(cache, "Xenova/bge-small-en-v1.5", "onnx/model.onnx")
+    weights = Path.join(snapshot, "onnx/model.onnx")
+    File.rm!(weights)
+    File.mkdir!(weights)
+    assert {:error, message} = ExFastembed.download("BGESmallENV15", :embedding)
+    assert message =~ "not a regular file"
+    refute message =~ "delete_model"
+
+    assert_raise Mix.Error, ~r/Could not download BGESmallENV15/, fn ->
+      Download.run(["BGESmallENV15"])
+    end
+  end
+
+  test "newline revisions are readable without mutations and normalized by download", %{
+    cache: cache
+  } do
+    snapshot = cache_fixture(cache, "Xenova/bge-small-en-v1.5", "onnx/model.onnx")
+    reference = Path.join(Path.dirname(Path.dirname(snapshot)), "refs/main")
+    File.write!(reference, "fixture\n")
+
+    assert {:ok, %{cached: true, revision: "fixture", variant_bytes: 35, file_details: files}} =
+             ExFastembed.model_info("BGESmallENV15", :embedding)
+
+    assert Enum.all?(files, &File.regular?(&1.path))
+    assert Enum.find(ExFastembed.models(), &(&1.name == "BGESmallENV15")).cached
+    assert File.read!(reference) == "fixture\n"
+    assert {:ok, true} = ExFastembed.download("BGESmallENV15", :embedding)
+    assert File.read!(reference) == "fixture"
   end
 
   test "metadata omits invalid cached revisions", %{cache: cache} do

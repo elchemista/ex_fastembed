@@ -49,6 +49,13 @@ build. See the [release guide](guides/releasing.md) before publishing a package.
 Reranking returns `{original_index, score, document}` tuples, ordered by descending
 score. Pass `false` as the last argument to return `nil` instead of document text.
 
+For retrieval, `embed_query/1` returns a single query vector and
+`embed_documents/1` returns document vectors, adding the documented prefixes for
+E5, BGE v1.5 and Nomic. `embed_text/1` keeps text unchanged. See the
+[retrieval prefix table](guides/model_lifecycle.md#retrieval-prefixes) for supported
+families and custom prompts. `embed_text/2`, `embed_documents/2`, `embed_query/2`
+and `rerank/4` accept `batch_size: 16` (or `nil` for FastEmbed defaults).
+
 ## Models and runtime behavior
 
 ```bash
@@ -60,7 +67,9 @@ mix fastembed.download JINARerankerV1TurboEn --reranker
 ```
 
 Use `ExFastembed.models/0` or `ExFastembed.model_info/2` for the same metadata in
-Elixir. Cache status checks all required files locally without loading a model.
+Elixir, including upstream model descriptions. Cache status checks all required
+files locally without loading a model. `ExFastembed.download(name, kind)` and the
+Mix download task populate the cache without initializing or replacing sessions.
 
 - List accepted names with `ExFastembed.embed_models/0` and `ExFastembed.reranker_models/0`.
 - Names are case-insensitive. Explicit variants such as `EmbeddingGemma300MQ4` select quantization.

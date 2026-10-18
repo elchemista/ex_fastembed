@@ -45,12 +45,14 @@ defmodule ExFastembedDocumentationTest do
     {:docs_v1, _, _, _, :hidden, _, docs} = Code.fetch_docs(ExFastembed.Native)
     {:ok, specs} = Code.Typespec.fetch_specs(ExFastembed.Native)
 
-    for {name, _public_arity} <- ExFastembed.__info__(:functions) do
+    for {name, exported_arity} <- ExFastembed.Native.__info__(:functions),
+        name != :rustler_init do
       assert {{:function, ^name, arity}, _, _, :hidden, _} =
                Enum.find(docs, fn {key, _, _, _, _} ->
                  match?({:function, ^name, _arity}, key)
                end)
 
+      assert arity == exported_arity
       assert Enum.any?(specs, fn {key, _spec} -> key == {name, arity} end)
     end
   end

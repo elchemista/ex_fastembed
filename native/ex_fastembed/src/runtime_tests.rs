@@ -255,3 +255,16 @@ fn inference_and_state_inspection_wait_for_replacement_to_finish() {
     assert_eq!(inferred_rx.recv().unwrap(), Ok(43));
     assert_eq!(inspected_rx.recv().unwrap(), "second");
 }
+
+#[test]
+fn inference_observes_the_identity_of_the_session_it_uses() {
+    let slot = Slot::new();
+    for name in ["first", "second"] {
+        slot.load(identity(name), || Ok(name.to_string())).unwrap();
+        slot.with_model_identity("missing", |model, identity| {
+            assert_eq!(*model, identity.name);
+            Ok(())
+        })
+        .unwrap();
+    }
+}

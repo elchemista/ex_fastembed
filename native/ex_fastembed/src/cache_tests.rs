@@ -199,3 +199,144 @@ fn sizes_and_removal_do_not_follow_links_or_delete_external_targets() {
         b"important"
     );
 }
+
+#[test]
+fn revision_resolution_recovers_missing_corrupt_and_non_utf8_refs_only() {
+    let root = tempfile::tempdir().unwrap();
+    let reference = root.path().join("main");
+    assert_eq!(
+        resolve_revision(&reference, || Ok("remote".into())).unwrap(),
+        "remote"
+    );
+    for bytes in [b"../../outside".as_slice(), b"", &[255]] {
+        std::fs::write(&reference, bytes).unwrap();
+        assert_eq!(
+            resolve_revision(&reference, || Ok("remote".into())).unwrap(),
+            "remote"
+        );
+    }
+    std::fs::write(&reference, "saved\n").unwrap();
+    assert_eq!(
+        resolve_revision(&reference, || panic!("must not consult main")).unwrap(),
+        "saved"
+    );
+    std::fs::remove_file(&reference).unwrap();
+    std::fs::create_dir(&reference).unwrap();
+    assert!(resolve_revision(&reference, || panic!("must preserve I/O error")).is_err());
+}
+
+#[test]
+fn only_http_404_suggests_deleting_cached_variants() {
+    for error in [
+        ApiError::RequestError(Box::new(ureq::Error::StatusCode(404))),
+        ApiError::TooManyRetries(Box::new(ApiError::RequestError(Box::new(
+            ureq::Error::StatusCode(404),
+        )))),
+    ] {
+        assert!(download_error(&error).contains("ExFastembed.delete_model/2"));
+    }
+    for error in [
+        ApiError::RequestError(Box::new(ureq::Error::StatusCode(401))),
+        ApiError::RequestError(Box::new(ureq::Error::StatusCode(500))),
+        ApiError::IoError(std::io::Error::new(std::io::ErrorKind::TimedOut, "timeout")),
+        ApiError::TooManyRetries(Box::new(ApiError::IoError(std::io::Error::new(
+            std::io::ErrorKind::NotConnected,
+            "offline",
+        )))),
+    ] {
+        assert!(!download_error(&error).contains("delete_model"));
+        assert_eq!(download_error(&error), error.to_string());
+    }
+}
+
+fn complete_snapshot(root: &Path, revision: &str) {
+    let snapshot = root.join("models--test--model/snapshots").join(revision);
+    std::fs::create_dir_all(&snapshot).unwrap();
+    for file in std::iter::once("model.onnx").chain(TOKENIZER_FILES) {
+        std::fs::write(snapshot.join(file), b"fixture").unwrap();
+    }
+}
+
+#[test]
+fn trailing_newline_cache_is_complete_and_normalized_without_network() {
+    let root = tempfile::tempdir().unwrap();
+    let cache = Cache::new(root.path().to_path_buf());
+    cache
+        .model("test/model".into())
+        .create_ref("saved")
+        .unwrap();
+    let reference = root.path().join("models--test--model/refs/main");
+    std::fs::write(&reference, "saved\n").unwrap();
+    complete_snapshot(root.path(), "saved");
+    assert!(files_cached(&cache, "test/model", "model.onnx", &[]));
+    prepare_files(
+        root.path().to_path_buf(),
+        "test/model",
+        "model.onnx",
+        &[],
+        "http://127.0.0.1:1".into(),
+    )
+    .unwrap();
+    assert_eq!(std::fs::read_to_string(reference).unwrap(), "saved");
+}
+
+#[test]
+fn corrupt_reference_is_resolved_from_remote_without_deleting_snapshots() {
+    use std::io::{Read, Write};
+    use std::time::{Duration, Instant};
+    let root = tempfile::tempdir().unwrap();
+    let cache = Cache::new(root.path().to_path_buf());
+    cache
+        .model("test/model".into())
+        .create_ref("saved")
+        .unwrap();
+    let reference = root.path().join("models--test--model/refs/main");
+    std::fs::write(&reference, "../../outside").unwrap();
+    std::fs::write(root.path().join("outside"), b"keep").unwrap();
+    complete_snapshot(root.path(), "old");
+    complete_snapshot(root.path(), "resolved");
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    listener.set_nonblocking(true).unwrap();
+    let endpoint = format!("http://{}", listener.local_addr().unwrap());
+    let server = std::thread::spawn(move || {
+        let deadline = Instant::now() + Duration::from_secs(10);
+        let mut stream = loop {
+            match listener.accept() {
+                Ok((stream, _)) => break stream,
+                Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                    assert!(Instant::now() < deadline, "metadata request missing");
+                    std::thread::sleep(Duration::from_millis(10));
+                }
+                Err(error) => panic!("{error}"),
+            }
+        };
+        stream
+            .set_read_timeout(Some(Duration::from_secs(5)))
+            .unwrap();
+        let mut request = Vec::new();
+        let mut buffer = [0; 1024];
+        while !request.windows(4).any(|part| part == b"\r\n\r\n") {
+            let size = stream.read(&mut buffer).unwrap();
+            assert!(size > 0);
+            request.extend_from_slice(&buffer[..size]);
+        }
+        assert!(String::from_utf8_lossy(&request)
+            .starts_with("GET /test/model/resolve/main/model.onnx "));
+        stream.write_all(b"HTTP/1.1 206 Partial Content\r\nX-Repo-Commit: resolved\r\nETag: fixture\r\nContent-Range: bytes 0-0/7\r\nContent-Length: 1\r\nConnection: close\r\n\r\nx").unwrap();
+    });
+    let result = prepare_files(
+        root.path().to_path_buf(),
+        "test/model",
+        "model.onnx",
+        &[],
+        endpoint,
+    );
+    server.join().unwrap();
+    result.unwrap();
+    assert_eq!(std::fs::read_to_string(reference).unwrap(), "resolved");
+    assert_eq!(std::fs::read(root.path().join("outside")).unwrap(), b"keep");
+    assert!(root
+        .path()
+        .join("models--test--model/snapshots/old/model.onnx")
+        .is_file());
+}

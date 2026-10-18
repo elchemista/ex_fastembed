@@ -28,6 +28,7 @@ test -f "$smoke_root/package/native/ex_fastembed/Cargo.lock"
 test -f "$smoke_root/package/guides/models.md"
 test -f "$smoke_root/package/guides/model_lifecycle.md"
 test -f "$smoke_root/package/native/ex_fastembed/src/runtime.rs"
+test ! -e "$smoke_root/package/scripts/checksums.exs"
 if tar -tzf "$smoke_root/archive/contents.tar.gz" | rg '(^|/)(target|_build|deps|priv)(/|$)|\.(so|dll|dylib)$'; then
   echo 'Unexpected build artifacts in Hex package' >&2
   exit 1
@@ -62,10 +63,16 @@ if System.get_env("EX_FASTEMBED_BUILD") != "1" do
   false = Code.ensure_loaded?(Rustler)
 end
 50 = length(ExFastembed.models())
+{:ok, true} = ExFastembed.download("BGESmallENV15", :embedding)
+{:ok, []} = ExFastembed.loaded_models()
 {:ok, 384} = ExFastembed.load("BGESmallENV15")
 {:ok, [embedding]} = ExFastembed.embed_text(["Hex package smoke test"])
 384 = length(embedding)
 true = Enum.all?(embedding, &is_float/1)
+{:ok, query} = ExFastembed.embed_query("Hex retrieval check")
+384 = length(query)
+{:ok, [document]} = ExFastembed.embed_documents(["Hex retrieval check"], batch_size: 1)
+384 = length(document)
 {:ok, %{cached: true}} = ExFastembed.model_info("BGESmallENV15", :embedding)
 Mix.Task.run("fastembed.models", ["--cached"])
 Mix.Task.run("fastembed.download", ["BGESmallENV15"])

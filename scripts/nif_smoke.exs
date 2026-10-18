@@ -14,9 +14,10 @@ defmodule ExFastembed.Native do
         embed_models: 0,
         reranker_models: 0,
         load: 2,
-        embed_text: 1,
+        embed_text: 3,
         load_reranker: 2,
-        rerank: 3
+        rerank: 4,
+        download: 3
       ] do
     def unquote(name)(unquote_splicing(Macro.generate_arguments(arity, __MODULE__))),
       do: :erlang.nif_error(:nif_not_loaded)
@@ -30,10 +31,16 @@ end
 Code.require_file("../lib/ex_fastembed.ex", __DIR__)
 
 50 = length(ExFastembed.models())
+{:ok, true} = ExFastembed.download("BGESmallENV15", :embedding)
+{:ok, []} = ExFastembed.loaded_models()
 {:ok, 384} = ExFastembed.load("BGESmallENV15")
 {:ok, [embedding]} = ExFastembed.embed_text(["Precompiled NIF runtime check"])
 384 = length(embedding)
 true = Enum.all?(embedding, &is_float/1)
+{:ok, query} = ExFastembed.embed_query("NIF retrieval check")
+384 = length(query)
+{:ok, [document]} = ExFastembed.embed_documents(["NIF retrieval check"], batch_size: 1)
+384 = length(document)
 {:ok, %{cached: true}} = ExFastembed.model_info("BGESmallENV15", :embedding)
 
 {:ok, [%{loaded: true, kind: :embedding}]} = ExFastembed.loaded_models()

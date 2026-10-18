@@ -44,6 +44,38 @@ defmodule ExFastembedReleaseTest do
     assert File.read!(Path.join(root, "published-args")) == "--dry-run\n--yes"
   end
 
+  test "docs and revert operations do not need checksums or release scripts", %{root: root} do
+    File.rm_rf!(Path.join(root, "scripts"))
+
+    for args <- [
+          ["docs"],
+          ["--yes", "docs"],
+          ["--organization", "team", "docs"],
+          ["--revert", "0.1.2"],
+          ["package", "--revert=0.1.2"],
+          ["docs", "--revert", "0.1.2"]
+        ] do
+      {output, status} = publish(root, args)
+      assert status == 0, "#{inspect(args)}: #{output}"
+      assert File.read!(Path.join(root, "published-args")) == Enum.join(args, "\n")
+    end
+  end
+
+  test "package publishing cannot mistake an organization named docs for docs mode", %{root: root} do
+    {output, status} = publish(root, ["--organization", "docs", "package"])
+    assert status != 0
+    assert output =~ "Missing NIF checksums"
+    refute File.exists?(Path.join(root, "published-args"))
+  end
+
+  test "package publishing requires the release script from the source checkout", %{root: root} do
+    File.rm_rf!(Path.join(root, "scripts"))
+    {output, status} = publish(root)
+    assert status != 0
+    assert output =~ "Publish packages from a source checkout"
+    refute File.exists?(Path.join(root, "published-args"))
+  end
+
   defp write_checksums(root, version, digest) do
     entries =
       for nif <- ["2.15", "2.16"],
@@ -63,7 +95,7 @@ defmodule ExFastembedReleaseTest do
     File.write!(Path.join(root, @checksum), inspect(entries))
   end
 
-  defp publish(root) do
+  defp publish(root, args \\ ["--dry-run", "--yes"]) do
     # A separate VM loads the copied project and a stub Hex task. No publishing,
     # authentication, or network access occurs, even in the successful case.
     script = """
@@ -73,10 +105,10 @@ defmodule ExFastembedReleaseTest do
       use Mix.Task
       def run(args), do: File.write!("published-args", Enum.join(args, "\\n"))
     end
-    Mix.Task.run("hex.publish", ["--dry-run", "--yes"])
+    Mix.Task.run("hex.publish", System.argv())
     """
 
-    System.cmd("elixir", ["-e", script],
+    System.cmd("elixir", ["-e", script, "--" | args],
       cd: root,
       env: [{"ERL_FLAGS", "+S 2:2"}],
       stderr_to_stdout: true

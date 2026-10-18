@@ -121,6 +121,46 @@ defmodule ExFastembedTest do
     end
   end
 
+  test "batch options are validated for embedding, retrieval and reranking, even with empty input" do
+    for opts <- [
+          nil,
+          %{},
+          [unknown: 1],
+          [batch_size: 0],
+          [batch_size: -1],
+          [batch_size: 1.5],
+          [batch_size: 18_446_744_073_709_551_616],
+          [batch_size: "2"],
+          [batch_size: 1, batch_size: 2],
+          [{:batch_size, 1} | :invalid]
+        ] do
+      assert {:error, _} = ExFastembed.embed_text([], opts)
+      assert {:error, _} = ExFastembed.embed_query("query", opts)
+      assert {:error, _} = ExFastembed.embed_documents([], opts)
+      assert {:error, _} = ExFastembed.rerank("query", [], false, opts)
+    end
+
+    for opts <- [[], [batch_size: nil], [batch_size: 1]] do
+      assert {:ok, []} = ExFastembed.embed_text([], opts)
+      assert {:ok, []} = ExFastembed.embed_documents([], opts)
+      assert {:ok, []} = ExFastembed.rerank("query", [], false, opts)
+    end
+  end
+
+  test "retrieval helpers validate inputs and require a session for nonempty work" do
+    for query <- [nil, 1, [], <<255>>] do
+      assert {:error, _} = ExFastembed.embed_query(query)
+    end
+
+    for documents <- [nil, "doc", [<<255>>], ["doc", 1], ["doc" | :invalid]] do
+      assert {:error, _} = ExFastembed.embed_documents(documents)
+    end
+
+    assert {:ok, []} = ExFastembed.embed_documents([])
+    assert {:error, "No model loaded. Call load/1 first."} = ExFastembed.embed_query("query")
+    assert {:error, "No model loaded. Call load/1 first."} = ExFastembed.embed_documents(["doc"])
+  end
+
   defp documented_models(heading, next_heading) do
     guide = File.read!(Path.expand("../guides/models.md", __DIR__))
     [_before, section] = String.split(guide, "### #{heading}", parts: 2)

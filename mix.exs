@@ -21,7 +21,7 @@ defmodule ExFastembed.MixProject do
         ignore_modules: [ExFastembed.Native]
       ],
       deps: deps(),
-      aliases: ["hex.publish": [&verify_release_checksums/1, "hex.publish"]],
+      aliases: ["hex.publish": [&publish/1]],
       description: description(),
       package: package(),
       rustler_precompiled: [
@@ -75,13 +75,38 @@ defmodule ExFastembed.MixProject do
       native/ex_fastembed/Cargo.lock
       native/ex_fastembed/.cargo
       native/ex_fastembed/src
-      scripts/checksums.exs
     ) ++ Path.wildcard("checksum-*.exs")
   end
 
-  @spec verify_release_checksums([String.t()]) :: :ok
-  defp verify_release_checksums(_args) do
+  @spec publish([String.t()]) :: term()
+  defp publish(args) do
+    # Only the final alias step receives the CLI arguments. Keep validation and
+    # delegation together so docs/revert can be recognized before invoking Hex.
+    {opts, commands, invalid} =
+      OptionParser.parse(args,
+        strict: [
+          organization: :string,
+          yes: :boolean,
+          dry_run: :boolean,
+          replace: :boolean,
+          revert: :string
+        ]
+      )
+
+    if invalid == [] and (commands == ["docs"] or is_binary(opts[:revert])),
+      do: :ok,
+      else: check_release_checksums()
+
+    Mix.Task.run("hex.publish", args)
+  end
+
+  @spec check_release_checksums() :: :ok
+  defp check_release_checksums do
     script = Path.join(__DIR__, "scripts/checksums.exs")
+
+    unless File.regular?(script),
+      do: Mix.raise("Publish packages from a source checkout containing scripts/checksums.exs")
+
     {output, status} = System.cmd("elixir", [script, "--check"], stderr_to_stdout: true)
 
     if status != 0, do: Mix.raise("Release checksum validation failed:\n#{output}")

@@ -9,6 +9,7 @@ are separate operations.
 
 | Operation | Native memory | Files on disk | Return value |
 | --- | --- | --- | --- |
+| `ExFastembed.download(name, kind)` | Does not initialize or replace sessions | Downloads missing required files | `{:ok, true}` |
 | `ExFastembed.load(name)` | Creates or replaces the embedding session | Downloads missing required files | `{:ok, dimension}` |
 | `ExFastembed.load_reranker(name)` | Creates or replaces the reranker session | Downloads missing required files | `{:ok, true}` |
 | `ExFastembed.unload()` | Drops the embedding session and its owned buffers | Keeps all files | `{:ok, true}` |
@@ -171,10 +172,14 @@ provide simultaneous inference while a replacement loads.
 ## Recover an unusable cache
 
 Missing files, empty snapshot files, and dangling snapshot links are repaired
-when loading, including snapshots left behind without `refs/main`. An invalid
-cached revision is reported as `nil` in metadata and rejected during loading.
-If the saved revision is malformed or no longer exists on Hugging Face, remove
-that repository and retry:
+when loading or downloading, including snapshots left behind without `refs/main`.
+A missing or malformed reference is resolved from remote `main` and saved before
+file downloads begin; existing snapshots are kept. Metadata reports malformed
+revisions as `nil`. A trailing newline is accepted for local inspection and
+normalized before loading or downloading, without a network request when complete.
+
+A valid saved revision remains pinned even if incomplete. If it no longer exists
+on Hugging Face, a 404 error suggests removing that repository and retrying:
 
 ```elixir
 {:ok, true} = ExFastembed.delete_model("BGESmallENV15", :embedding)
@@ -183,7 +188,8 @@ that repository and retry:
 
 This physically deletes all cached variants and revisions in that repository.
 Coordinate application requests before deletion as described above. The library
-does not silently switch an incomplete download to another revision.
+does not silently switch a valid saved revision to another commit. Network and
+timeout errors retain their original message and do not suggest deleting the cache.
 
 ## Command-line discovery
 
@@ -199,7 +205,70 @@ mix fastembed.download JINARerankerV1TurboEn --reranker
 inspect a separately running application. The listing includes repository paths,
 variant bytes, and repository bytes. A `-` in a size column means unknown.
 
-`mix fastembed.download` skips complete downloads. Missing files are downloaded
-and a session is initialized to verify loading; this can require substantial
-RAM. The session belongs to that Mix VM. Applications still call `load/1` or
-`load_reranker/1` before inference.
+`mix fastembed.download` skips complete downloads and downloads missing files
+without creating a session. Its API equivalent is `ExFastembed.download/2`.
+Neither replaces models already loaded in the VM. Applications still call
+`load/1` or `load_reranker/1` before inference; these validate the ONNX contents.
+Downloads serialize with loads and deletion in this VM, while inference on an
+already loaded session can continue.
+
+
+## Warm a cache without loading sessions
+
+```elixir
+{:ok, true} = ExFastembed.download("BGESmallENV15", :embedding)
+{:ok, true} = ExFastembed.download("JINARerankerV1TurboEn", :reranker)
+```
+
+This is suitable for a Docker build or an application startup step. It downloads
+required files and repairs incomplete snapshots, without allocating an ONNX
+session. It checks that files are present and non-empty; it does not validate
+model contents. Use `model_info/2` for the upstream `description`, paths and sizes.
+
+## Batch sizes
+
+```elixir
+{:ok, vectors} = ExFastembed.embed_text(texts, batch_size: 16)
+{:ok, scores} = ExFastembed.rerank(query, documents, true, batch_size: 8)
+```
+
+The option must be a positive 64-bit integer or `nil` (the FastEmbed default).
+Unknown options, duplicate keys and invalid sizes return errors, even for empty
+inputs. Smaller batches can reduce peak inference memory but all output vectors
+are returned together. Input order and reranking indices are preserved.
+Dynamically quantized models reject a batch size smaller than the input count;
+this is FastEmbed's safeguard against incomparable vectors across batches.
+Such an error leaves the session loaded so the call can be retried with `nil`.
+
+## Retrieval prefixes
+
+```elixir
+{:ok, 384} = ExFastembed.load("BGESmallENV15")
+{:ok, query_vector} = ExFastembed.embed_query("capital of Italy")
+{:ok, document_vectors} = ExFastembed.embed_documents(["Rome is Italy's capital"], batch_size: 16)
+```
+
+`embed_query/1` takes a single string and returns one vector; `embed_documents/1`
+takes a list and returns one vector per input. Both also accept batch options as
+a second argument. They use these retrieval prefixes, including the quantized
+variants of each family:
+
+| Family | Query prefix | Document prefix |
+| --- | --- | --- |
+| Multilingual E5 small/base/large | `query: ` | `passage: ` |
+| BGE v1.5 English | `Represent this sentence for searching relevant passages: ` | None |
+| BGE v1.5 Chinese | `为这个句子生成表示以用于检索相关文章：` | None |
+| Nomic v1 and v1.5 | `search_query: ` | `search_document: ` |
+| Other variants, including BGE-M3 | None | None |
+
+These rules follow the [E5](https://huggingface.co/intfloat/multilingual-e5-small),
+[BGE](https://huggingface.co/BAAI/bge-small-en-v1.5),
+[Nomic v1](https://huggingface.co/nomic-ai/nomic-embed-text-v1) and
+[Nomic v1.5](https://huggingface.co/nomic-ai/nomic-embed-text-v1.5) model cards.
+Use unprefixed inputs; the helpers always prepend the applicable instruction.
+The prefix and inference use the same locked session, including during replacement.
+
+For other model families, custom prompts, or tasks such as clustering and
+symmetric similarity, use `embed_text/1` or `embed_text/2` with the instructions
+appropriate to that model and task. Those functions always pass text unchanged.
+Use the same model and document preparation when building and querying an index.

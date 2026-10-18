@@ -8,6 +8,7 @@ use runtime::{Identity, Slot};
 use std::sync::{PoisonError, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 mod cache;
+mod retrieval;
 mod runtime;
 
 static EMBED_MODEL: Slot<TextEmbedding> = Slot::new();
@@ -161,12 +162,18 @@ fn load(model_name: String, cache_dir: String) -> Result<i64, String> {
 }
 
 #[cfg_attr(not(test), rustler::nif(schedule = "DirtyCpu"))]
-fn embed_text(texts: Vec<String>) -> Result<Vec<Vec<f32>>, String> {
+fn embed_text(
+    texts: Vec<String>,
+    batch_size: Option<usize>,
+    input: retrieval::Input,
+) -> Result<Vec<Vec<f32>>, String> {
+    validate_batch_size(batch_size)?;
     if texts.is_empty() {
         return Ok(Vec::new());
     }
-    EMBED_MODEL.with_model("No model loaded. Call load/1 first.", |model| {
-        model.embed(texts, None).map_err(|e| e.to_string())
+    EMBED_MODEL.with_model_identity("No model loaded. Call load/1 first.", |model, identity| {
+        let texts = retrieval::prepare(texts, &identity.name, input);
+        model.embed(texts, batch_size).map_err(|e| e.to_string())
     })
 }
 
@@ -198,13 +205,15 @@ fn rerank(
     query: String,
     documents: Vec<String>,
     return_docs: bool,
+    batch_size: Option<usize>,
 ) -> Result<Vec<(usize, f32, Option<String>)>, String> {
+    validate_batch_size(batch_size)?;
     if documents.is_empty() {
         return Ok(Vec::new());
     }
     RERANKER.with_model("No reranker loaded. Call load_reranker/1 first.", |model| {
         model
-            .rerank(query, documents, return_docs, None)
+            .rerank(query, documents, return_docs, batch_size)
             .map(|results| {
                 results
                     .into_iter()
@@ -213,6 +222,14 @@ fn rerank(
             })
             .map_err(|e| e.to_string())
     })
+}
+
+fn validate_batch_size(batch_size: Option<usize>) -> Result<(), String> {
+    if batch_size == Some(0) {
+        Err("Invalid input: batch_size must be a positive integer or nil".into())
+    } else {
+        Ok(())
+    }
 }
 
 fn resolve_embedding_model(model_name: &str) -> Result<EmbeddingModel, String> {

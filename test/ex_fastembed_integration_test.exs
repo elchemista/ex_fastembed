@@ -128,6 +128,8 @@ defmodule ExFastembedIntegrationTest do
       assert {:ok, %{cached: false}} = ExFastembed.model_info("AllMiniLML6V2Q", :embedding)
       assert :ok = Download.run(["AllMiniLML6V2Q"])
       assert {:ok, %{cached: true}} = ExFastembed.model_info("AllMiniLML6V2Q", :embedding)
+      assert {:ok, []} = ExFastembed.loaded_models()
+      assert {:ok, 384} = ExFastembed.load("AllMiniLML6V2Q")
       assert {:ok, embeddings} = ExFastembed.embed_text(["Downloaded model"])
       assert_embeddings(embeddings, 1, 384)
     after
@@ -152,6 +154,11 @@ defmodule ExFastembedIntegrationTest do
     assert_embeddings(replacement_embeddings, 2, 384)
     refute original_embeddings == replacement_embeddings
 
+    assert {:error, message} = ExFastembed.embed_text(texts, batch_size: 1)
+    assert message =~ "Dynamic quantization"
+    assert {:ok, unchanged} = ExFastembed.embed_documents(texts, batch_size: length(texts))
+    assert_vectors_close(unchanged, replacement_embeddings)
+
     assert {:error, _message} = ExFastembed.load("invalid-model")
 
     texts
@@ -167,29 +174,36 @@ defmodule ExFastembedIntegrationTest do
     end)
   end
 
-  test "loading without refs/main repairs orphaned snapshots before downloading weights" do
+  test "loading repairs orphaned snapshots with missing or corrupt refs/main" do
     name = "AllMiniLML6V2Q"
     assert {:ok, 384} = ExFastembed.load(name)
     {:ok, original} = ExFastembed.model_info(name, :embedding)
     original_cache = System.get_env("FASTEMBED_CACHE_DIR")
     cache = Path.join(System.tmp_dir!(), "fastembed-orphan-#{System.unique_integer([:positive])}")
     destination = Path.join(cache, Path.basename(original.path))
-    cases = if match?({:unix, _}, :os.type()), do: [:empty, :dangling], else: [:empty]
+
+    cases =
+      if match?({:unix, _}, :os.type()),
+        do: [:empty, :dangling, :corrupt_ref],
+        else: [:empty, :corrupt_ref]
 
     try do
       for damage <- cases do
         File.mkdir_p!(cache)
         File.cp_r!(original.path, destination)
-        File.rm!(Path.join(destination, "refs/main"))
+
+        if damage == :corrupt_ref,
+          do: File.write!(Path.join(destination, "refs/main"), "../../outside"),
+          else: File.rm!(Path.join(destination, "refs/main"))
 
         weights =
           Path.join([destination, "snapshots", original.revision, "onnx/model_quantized.onnx"])
 
         File.rm!(weights)
 
-        if damage == :empty,
-          do: File.write!(weights, ""),
-          else: File.ln_s!("missing-weights", weights)
+        if damage == :dangling,
+          do: File.ln_s!("missing-weights", weights),
+          else: File.write!(weights, "")
 
         System.put_env("FASTEMBED_CACHE_DIR", cache)
         assert {:ok, 384} = ExFastembed.load(name)
@@ -241,6 +255,53 @@ defmodule ExFastembedIntegrationTest do
     end
   end
 
+  test "batch sizes preserve ordering and retrieval helpers match explicit prefixes" do
+    texts = ["A long document about the city of Rome.", "Italy", "Bears live in forests."]
+    assert {:ok, 384} = ExFastembed.load("BGESmallENV15")
+    assert {:ok, expected} = ExFastembed.embed_text(texts)
+    assert {:ok, batched} = ExFastembed.embed_text(texts, batch_size: 1)
+    assert_vectors_close(batched, expected)
+    assert {:ok, documents} = ExFastembed.embed_documents(texts, batch_size: 2)
+    assert_vectors_close(documents, expected)
+    assert {:ok, query} = ExFastembed.embed_query("capital of Italy")
+
+    assert {:ok, explicit} =
+             ExFastembed.embed_text([
+               "Represent this sentence for searching relevant passages: capital of Italy"
+             ])
+
+    assert_vectors_close([query], explicit)
+
+    assert {:ok, true} = ExFastembed.load_reranker("JINARerankerV1TurboEn")
+    assert {:ok, scores} = ExFastembed.rerank("Italy", texts, true)
+    assert {:ok, batched_scores} = ExFastembed.rerank("Italy", texts, true, batch_size: 1)
+
+    for {{index, score, text}, {expected_index, expected_score, expected_text}} <-
+          Enum.zip(batched_scores, scores) do
+      assert {index, text} == {expected_index, expected_text}
+      assert_in_delta score, expected_score, 1.0e-4
+    end
+  end
+
+  test "downloading another variant preserves both active sessions" do
+    assert {:ok, 384} = ExFastembed.load("BGESmallENV15")
+    assert {:ok, true} = ExFastembed.load_reranker("JINARerankerV1TurboEn")
+    assert {:ok, loaded} = ExFastembed.loaded_models()
+    assert {:ok, true} = ExFastembed.download("AllMiniLML6V2Q", :embedding)
+    assert {:ok, ^loaded} = ExFastembed.loaded_models()
+    assert {:ok, [_]} = ExFastembed.embed_text(["still loaded"])
+    assert {:ok, [_]} = ExFastembed.rerank("query", ["still loaded"], false)
+  end
+
+  defp assert_vectors_close(actual, expected) do
+    assert length(actual) == length(expected)
+
+    for {left, right} <- Enum.zip(actual, expected) do
+      assert length(left) == length(right)
+      for {value, target} <- Enum.zip(left, right), do: assert_in_delta(value, target, 1.0e-5)
+    end
+  end
+
   defp assert_partial_download(name, kind) do
     {:ok, %{repository: repository, cached: true}} = ExFastembed.model_info(name, kind)
     original_cache = System.get_env("FASTEMBED_CACHE_DIR")
@@ -282,7 +343,11 @@ defmodule ExFastembedIntegrationTest do
       )
 
       File.rm!(Path.join([destination, "snapshots", revision, "config.json"]))
-      assert_raise Mix.Error, ~r/Could not download\/load/, fn -> Download.run(args) end
+      assert :ok = Download.run(args)
+      {:ok, before_load} = ExFastembed.loaded_models()
+      loader = if kind == :embedding, do: &ExFastembed.load/1, else: &ExFastembed.load_reranker/1
+      assert {:error, _} = loader.(name)
+      assert {:ok, ^before_load} = ExFastembed.loaded_models()
     after
       if original_cache,
         do: System.put_env("FASTEMBED_CACHE_DIR", original_cache),

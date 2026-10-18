@@ -13,15 +13,13 @@ defmodule Mix.Tasks.Fastembed.Download do
   Accepts the same aliases as `ExFastembed.load/1` and `ExFastembed.load_reranker/1`.
   Use `mix fastembed.models` to list variants and their cache status.
 
-  Complete cached models are skipped. Missing files are downloaded using FastEmbed
-  and the model is initialized to verify it can load. Existing non-empty files are
-  reused. Empty snapshot files and dangling snapshot links are replaced when
-  downloading missing files; their link targets are kept. A directory occupying
-  a required file path returns an error. Loading may require substantial memory
-  for large models. A load/download failure exits with a Mix error.
-  The loaded model belongs to this Mix process;
-  your application still calls `ExFastembed.load/1` or `ExFastembed.load_reranker/1`
-  before inference.
+  Complete cached models are skipped. Missing files are downloaded without
+  initializing an ONNX session or changing loaded models. Existing non-empty files
+  are reused. Empty snapshot files and dangling snapshot links are replaced;
+  their link targets are kept. A directory occupying a required file path returns
+  an error. A download failure exits with a Mix error.
+  Call `ExFastembed.load/1` or `ExFastembed.load_reranker/1` before inference to
+  initialize the model and validate its contents.
   """
 
   @doc false
@@ -50,12 +48,9 @@ defmodule Mix.Tasks.Fastembed.Download do
       {:ok, model} ->
         Mix.shell().info("Downloading #{model.name} from #{model.repository}...")
 
-        loader =
-          if kind == :embedding, do: &ExFastembed.load/1, else: &ExFastembed.load_reranker/1
-
-        case loader.(model.name) do
-          {:ok, _result} -> Mix.shell().info("#{model.name} downloaded and ready to load.")
-          {:error, reason} -> Mix.raise("Could not download/load #{model.name}: #{reason}")
+        case ExFastembed.download(model.name, kind) do
+          {:ok, true} -> Mix.shell().info("#{model.name} downloaded and ready to load.")
+          {:error, reason} -> Mix.raise("Could not download #{model.name}: #{reason}")
         end
 
       {:error, reason} ->

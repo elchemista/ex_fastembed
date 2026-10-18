@@ -16,6 +16,8 @@ crate-type = ["cdylib"]
 [dependencies]
 fastembed = { version = "7.1.1", default-features = false, features = ["hf-hub-native-tls", "ort-download-binaries-native-tls"] }
 hf-hub = { version = "0.5.0", default-features = false }
+# Match hf-hub's HTTP error type to distinguish 404s from network failures.
+ureq = { version = "3", default-features = false }
 rustler = { version = "0.39.0", default-features = false }
 
 [dev-dependencies]

@@ -10,10 +10,15 @@ artifacts are published. The 0.1.1 checksum map has been removed; generate and
 commit the new map from the actual 0.1.2 archives before publishing to Hex.
 
 The `hex.publish` alias validates the complete checksum map before invoking Hex,
-including for dry runs and documentation publishing. Missing, stale, or malformed
-checksums stop publication before authentication or upload. `mix hex.build`
-remains available without checksums for source validation. Offline tests exercise
-this guard with a simulated publish task.
+when publishing a package, including dry runs. Missing, stale, or malformed
+checksums stop publication before authentication or upload. Documentation-only
+publishing (`mix hex.publish docs`) and reverting (`--revert VERSION`) skip the
+checksum check. `mix hex.build` remains available without checksums for source
+validation. Offline tests exercise these paths with a simulated publish task.
+
+Publish packages from the source checkout: `scripts/checksums.exs` is release
+tooling and is not shipped in the Hex archive. Consumers do not need this script
+to compile the package or verify the precompiled NIF checksums.
 
 ## 1. Verify the source
 

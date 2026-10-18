@@ -53,19 +53,9 @@ impl<T> Slot<T> {
         missing: &str,
         infer: impl FnOnce(&mut T) -> Result<R, String>,
     ) -> Result<R, String> {
-        self.with_model_identity(missing, |model, _identity| infer(model))
-    }
-
-    pub fn with_model_identity<R>(
-        &self,
-        missing: &str,
-        infer: impl FnOnce(&mut T, &Identity) -> Result<R, String>,
-    ) -> Result<R, String> {
         let mut slot = self.lock();
         let loaded = slot.as_mut().ok_or_else(|| missing.to_string())?;
-        match catch_unwind(AssertUnwindSafe(|| {
-            infer(&mut loaded.model, &loaded.identity)
-        })) {
+        match catch_unwind(AssertUnwindSafe(|| infer(&mut loaded.model))) {
             Ok(result) => result,
             Err(_) => {
                 // Inference has mutable access to the session. Its internal
